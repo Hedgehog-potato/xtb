@@ -43,6 +43,9 @@ module xtb_gfnff_param
       !> Harmonic potential version of the Angew. Chem. 2020
       integer :: harmonic2020 = -1
 
+      !> Potato-input
+      integer :: potato_input = 4
+
    end type TGFFVersionEnum
 
    !> Actual enumerator for force field versions
@@ -486,6 +489,9 @@ module xtb_gfnff_param
      case(gffVersion%angewChem2020, gffVersion%angewChem2020_1, gffVersion%angewChem2020_2, gffVersion%harmonic2020)
         call loadGFNFFAngewChem2020(param)
         exist = .true.
+     case (gffVersion%potato_input)
+         call readPotatoParameters(param)
+         exist = .true.
      end select
 
    end subroutine gfnff_load_param
@@ -506,6 +512,39 @@ module xtb_gfnff_param
      param%tors2(:) = tors2_angewChem2020
    end subroutine loadGFNFFAngewChem2020
 
+   subroutine readPotatoParameters(param)
+      use xtb_mctc_accuracy, only : wp
+      implicit none
+      integer :: ich
+      type(TGFFData), intent(out) :: param
+      integer :: i, j
+      logical :: exist
+      real(wp), allocatable, dimension(:,:) :: aa
+      call open_file(ich, 'potato_input.txt', 'r')
+      exist = ich /= -1
+      if (exist) then
+         do i=1,11
+            read(ich,*) (aa(i,j),j=1,86)
+         enddo
+         do i=1,86
+            param%chi(i)=aa(1,i)
+            param%gam(i)=aa(2,i)
+            param%cnf(i)=aa(3,i)
+            param%alp(i)=aa(4,i)
+            param%bond(i)=aa(5,i)
+            param%repa(i)=aa(6,i)
+            param%repan(i)=aa(7,i)
+            param%angl(i)=aa(8,i)
+            param%angl2(i)=aa(9,i)
+            param%tors(i)=aa(10,i)
+            param%tors2(i)=aa(11,i)
+         enddo
+         call close_file(ich)
+      !else
+      !  call env%error('Potato-parameter file not found!', source)
+      !  return
+      endif
+   end subroutine readPotatoParameters
 
    subroutine gfnff_read_param(iunit, param)
      use xtb_mctc_accuracy, only : wp 

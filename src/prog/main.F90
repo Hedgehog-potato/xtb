@@ -196,6 +196,7 @@ subroutine xtbMain(env, argParser)
    logical :: strict
    logical :: exitRun
    logical :: cold_fusion
+   logical :: potato_input
 
 !  OMP stuff
    integer :: TID, OMP_GET_NUM_THREADS, OMP_GET_THREAD_NUM
@@ -210,7 +211,7 @@ subroutine xtbMain(env, argParser)
    ! ------------------------------------------------------------------------
    !> read the command line arguments
    call parseArguments(env, argParser, xcontrol, fnv, acc, lgrad, &
-      & restart, gsolvstate, strict, copycontrol, coffee, printTopo, oniom, tblite)
+      & restart, gsolvstate, strict, copycontrol, coffee, printTopo, oniom, tblite, potato_input)
 
    nFiles = argParser%countFiles()
    select case(nFiles)
@@ -523,7 +524,7 @@ subroutine xtbMain(env, argParser)
 
    ! ------------------------------------------------------------------------
    !> Obtain the parameter data
-   call newCalculator(env, mol, calc, fnv, restart, acc, oniom, iff_data, tblite)
+   call newCalculator(env, mol, calc, fnv, restart, acc, oniom, iff_data, tblite, potato_input)
    call env%checkpoint("Could not setup single-point calculator")
 
    call initDefaults(env, calc, mol, gsolvstate)
@@ -1126,7 +1127,7 @@ end subroutine xtbMain
 
 !> Parse command line arguments and forward them to settings
 subroutine parseArguments(env, args, inputFile, paramFile, accuracy, lgrad, &
-      & restart, gsolvstate, strict, copycontrol, coffee, printTopo, oniom, tblite)
+      & restart, gsolvstate, strict, copycontrol, coffee, printTopo, oniom, tblite, potato_input)
    use xtb_mctc_global, only : persistentEnv
 
    !> Name of error producer
@@ -1168,6 +1169,9 @@ subroutine parseArguments(env, args, inputFile, paramFile, accuracy, lgrad, &
    !> Copy the detailed input file
    logical, intent(out) :: copycontrol
 
+   !> If potato wants to use input
+   logical, intent(out) :: potato_input
+
    !> Input for ONIOM model
    type(oniom_input), intent(out) :: oniom
 
@@ -1197,6 +1201,7 @@ subroutine parseArguments(env, args, inputFile, paramFile, accuracy, lgrad, &
    accuracy = 1.0_wp
    gsolvstate = solutionState%gsolv
    tblite%color = get_xtb_feature('color')
+   potato_input = .false.
 
    nFlags = args%countFlags()
    call args%nextFlag(flag)
@@ -1353,11 +1358,12 @@ subroutine parseArguments(env, args, inputFile, paramFile, accuracy, lgrad, &
          call env%warning("The use of '"//flag//"' is discouraged, " //&
             & "please use '--gfn 0' next time", source)
       
-      case('--gfnff')
+      case('--gfnff', '--gff')
          call set_exttyp('ff')
-      
-      case('--gff')
-         call set_exttyp('ff')
+         call args%nextArg(sec)
+         if (allocated(sec)) then 
+            if (sec == 'potato_input') potato_input = .true.
+         endif
 
       case('--iff')
          call set_exttyp('iff')

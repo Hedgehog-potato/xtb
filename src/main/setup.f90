@@ -36,6 +36,7 @@ module xtb_main_setup
    use xtb_iff_data, only : TIFFData
    use xtb_oniom, only : TOniomCalculator, newOniomCalculator, oniom_input
    use xtb_setparam
+   use xtb_gfnff_param, only: gffVersion
    implicit none
    private
 
@@ -46,7 +47,7 @@ module xtb_main_setup
 contains
 
 
-subroutine newCalculator(env, mol, calc, fname, restart, accuracy, input, iff_data, tblite_input)
+subroutine newCalculator(env, mol, calc, fname, restart, accuracy, input, iff_data, tblite_input, potato_input)
 
    character(len=*), parameter :: source = 'main_setup_newCalculator'
 
@@ -68,6 +69,8 @@ subroutine newCalculator(env, mol, calc, fname, restart, accuracy, input, iff_da
 
    !> Input for TBLite calculator
    type(TTBLiteInput), intent(in), optional :: tblite_input
+
+   logical, intent(in), optional :: potato_input
 
    type(TxTBCalculator), allocatable :: xtb
    type(TTBLiteCalculator), allocatable :: tblite
@@ -125,7 +128,7 @@ subroutine newCalculator(env, mol, calc, fname, restart, accuracy, input, iff_da
    case(p_ext_gfnff)
       allocate(gfnff)
 
-      call newGFFCalculator(env, mol, gfnff, fname, restart)
+      call newGFFCalculator(env, mol, gfnff, fname, restart, gffVersion%potato_input)
 
       call env%check(exitRun)
       if (exitRun) then
