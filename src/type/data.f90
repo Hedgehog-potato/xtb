@@ -24,6 +24,7 @@ module xtb_type_data
 
    public :: scc_results
    public :: freq_results
+   public :: gfnff_derivative_results
 
    private
 
@@ -113,6 +114,24 @@ module xtb_type_data
       procedure :: deallocate => deallocate_freq_results
    end type freq_results
 
+   type gfnff_derivative_results
+      integer  :: n = 0
+      real(wp),allocatable :: d_chi(:)
+      real(wp),allocatable :: d_gam(:)
+      real(wp),allocatable :: d_cnf(:)
+      real(wp),allocatable :: d_alp(:)
+      real(wp),allocatable :: d_bond(:)
+      real(wp),allocatable :: d_repa(:)
+      real(wp),allocatable :: d_repan(:)
+      real(wp),allocatable :: d_angl(:)
+      real(wp),allocatable :: d_angl2(:)
+      real(wp),allocatable :: d_tors(:)
+      real(wp),allocatable :: d_tors2(:)
+      contains
+         procedure :: allocate => allocate_gff_d_results
+         procedure :: deallocate => deallocate_gff_d_results
+   end type gfnff_derivative_results
+
 contains
    
 subroutine delete(self)
@@ -168,5 +187,40 @@ subroutine deallocate_freq_results(self)
    if (allocated( self%polt )) deallocate( self%polt )
    if (allocated( self%pg   )) deallocate( self%pg   )
 end subroutine deallocate_freq_results
+
+subroutine allocate_gff_d_results(self, n)
+   implicit none
+   class(gfnff_derivative_results) :: self
+   integer,intent(in)  :: n
+   self%n = n
+   allocate(self%d_chi  (n),     source = 0.0_wp )
+   allocate(self%d_gam  (n),     source = 0.0_wp )
+   allocate(self%d_cnf  (n),     source = 0.0_wp )
+   allocate(self%d_alp  (n),     source = 0.0_wp )
+   allocate(self%d_bond (n),     source = 0.0_wp )
+   allocate(self%d_repa (n),     source = 0.0_wp )
+   allocate(self%d_repan(n),     source = 0.0_wp )
+   allocate(self%d_angl (n),     source = 0.0_wp )
+   allocate(self%d_angl2(n),     source = 0.0_wp )
+   allocate(self%d_tors (n),     source = 0.0_wp )
+   allocate(self%d_tors2(n),     source = 0.0_wp )
+end subroutine allocate_gff_d_results
+
+subroutine deallocate_gff_d_results(self)
+   implicit none
+   class(gfnff_derivative_results) :: self
+   self%n = 0
+   if (allocated( self%d_chi  )) deallocate( self%d_chi  )
+   if (allocated( self%d_gam  )) deallocate( self%d_gam  )
+   if (allocated( self%d_cnf  )) deallocate( self%d_cnf  )
+   if (allocated( self%d_alp  )) deallocate( self%d_alp  )
+   if (allocated( self%d_bond )) deallocate( self%d_bond )
+   if (allocated( self%d_repa )) deallocate( self%d_repa )
+   if (allocated( self%d_repan)) deallocate( self%d_repan)
+   if (allocated( self%d_angl )) deallocate( self%d_angl )
+   if (allocated( self%d_angl2)) deallocate( self%d_angl2)
+   if (allocated( self%d_tors )) deallocate( self%d_tors )
+   if (allocated( self%d_tors2)) deallocate( self%d_tors2)
+end subroutine deallocate_gff_d_results
 
 end module xtb_type_data

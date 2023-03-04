@@ -31,7 +31,7 @@ module xtb_gfnff_calculator
    use xtb_sphereparam
    use xtb_metadynamic
    use xtb_constrainpot
-   use xtb_gfnff_param, only : make_chrg,gff_print
+   use xtb_gfnff_param, only : make_chrg, gff_print, gff_der_print
    use xtb_gfnff_data, only : TGFFData
    use xtb_gfnff_topology, only : TGFFTopology
    use xtb_gfnff_neighbourlist, only : TGFFNeighbourList
@@ -64,7 +64,8 @@ module xtb_gfnff_calculator
 
    character(len=*),private,parameter :: outfmt = &
       '(9x,"::",1x,a,f23.12,1x,a,1x,"::")'
-
+   character(len=*),private,parameter :: der_outfmt = &
+      '(f23.12,f23.12,f23.12,f23.12,f23.12,f23.12,f23.12,f23.12,f23.12,f23.12,f23.12)'
 
 contains
 
@@ -174,6 +175,9 @@ subroutine singlepoint(self, env, mol, chk, printlevel, restart, &
    !> Detailed results
    type(scc_results), intent(out) :: results
 
+   !> Parameter derivative results
+   type(gfnff_derivative_results), allocatable :: der_res
+
    type(TBorn), allocatable :: solvation
    integer :: i,ich
    integer :: mode_sp_run = 1
@@ -190,6 +194,16 @@ subroutine singlepoint(self, env, mol, chk, printlevel, restart, &
    sigma(:,:) = 0.0_wp
    hlgap = 0.0_wp
    efix = 0.0_wp
+
+   if (gff_der_print) then
+      allocate(der_res)
+      call der_res%allocate(86)
+      if (allocated(der_res)) then
+         write(env%unit, '(9x,"::",1x,a,f23.12,1x,a,1x,"::")') "gff allocated---------------------------------------------"
+      else
+         write(env%unit, '(9x,"::",1x,a,f23.12,1x,a,1x,"::")') "gff not allocated---------------------------------------------"
+      end if
+   end if
 
    if (allocated(self%solvation)) then
       allocate(solvation)
@@ -250,7 +264,12 @@ subroutine singlepoint(self, env, mol, chk, printlevel, restart, &
       write(env%unit,outfmt) "gradient norm     ", results%gnorm,  "Eh/a0"
       if (.not.set%silent) then
          write(env%unit,'(9x,"::",49("."),"::")')
-         call print_gfnff_results(env%unit,results,set%verbose,allocated(solvation))
+         if (allocated(der_res)) then
+            write(env%unit, '(9x,"::",1x,a,f23.12,1x,a,1x,"::")') "gff allocated---------------------------------------------"
+         else
+            write(env%unit, '(9x,"::",1x,a,f23.12,1x,a,1x,"::")') "gff not allocated---------------------------------------------"
+         end if
+         call print_gfnff_results(env%unit, results, der_res, set%verbose,allocated(solvation), gff_der_print)
          write(env%unit,outfmt) "add. restraining  ", efix,       "Eh   "
          write(env%unit,outfmt) "total charge      ", sum(chk%nlist%q), "e    "
          if (set%verbose) then
@@ -269,11 +288,14 @@ subroutine singlepoint(self, env, mol, chk, printlevel, restart, &
 
 end subroutine singlepoint
 
-subroutine print_gfnff_results(iunit,res_gff,verbose,lsolv)
+subroutine print_gfnff_results(iunit,res_gff, der_res, verbose,lsolv, deriv_print)
    use xtb_type_data
    integer, intent(in) :: iunit ! file handle (usually output_unit=6)
+   integer :: derfile ! derivatives file handle
+   integer :: i,j
    type(scc_results),    intent(in) :: res_gff
-   logical,intent(in) :: verbose,lsolv
+   type(gfnff_derivative_results),  allocatable,  intent(in) :: der_res
+   logical,intent(in) :: verbose,lsolv, deriv_print
    write(iunit,outfmt) "bond energy       ", res_gff%e_bond, "Eh   "
    write(iunit,outfmt) "angle energy      ", res_gff%e_angl, "Eh   "
    write(iunit,outfmt) "torsion energy    ", res_gff%e_tors, "Eh   "
@@ -290,6 +312,24 @@ subroutine print_gfnff_results(iunit,res_gff,verbose,lsolv)
       write(iunit,outfmt) "   -> Gsasa       ", res_gff%g_sasa, "Eh   "
       write(iunit,outfmt) "   -> Ghb         ", res_gff%g_hb,   "Eh   "
       write(iunit,outfmt) "   -> Gshift      ", res_gff%g_shift,"Eh   "
+   end if
+   if (deriv_print) then
+      call open_file(derfile,'gfnff_parameters_derivatives.txt','w') 
+      write(iunit, outfmt) "derivatives must be printed"
+      if (derfile.ne.-1) then 
+         write(iunit, outfmt) "derivatives if passed"
+         do i = 1, 86
+            write (derfile, der_outfmt) &
+            & der_res%d_chi(i),der_res%d_gam(i),der_res%d_cnf(i),der_res%d_alp(i), &
+            & der_res%d_bond(i), der_res%d_repa(i),der_res%d_repan(i), &
+            & der_res%d_angl(i), der_res%d_angl2(i), der_res%d_tors(i), der_res%d_tors2(i)
+         end do
+      end if
+      write(iunit, outfmt) "derivatives printed"
+      call close_file(derfile)
+      write(iunit, outfmt) "derivatives closed"
+      call der_res%deallocate()
+      write(iunit, outfmt) "derivatives deallocated"
    end if
 end subroutine print_gfnff_results
 

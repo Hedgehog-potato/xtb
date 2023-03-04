@@ -83,7 +83,7 @@ module xtb_prog_main
    use xtb_coffee
    use xtb_disp_dftd3param
    use xtb_disp_dftd4
-   use xtb_gfnff_param, only : gff_print
+   use xtb_gfnff_param, only : gff_print, gff_der_print
    use xtb_gfnff_topology, only : TPrintTopo
    use xtb_gfnff_convert, only : struc_convert
    use xtb_scan
@@ -196,6 +196,7 @@ subroutine xtbMain(env, argParser)
    logical :: strict
    logical :: exitRun
    logical :: cold_fusion
+   logical :: gff_der
 
 !  OMP stuff
    integer :: TID, OMP_GET_NUM_THREADS, OMP_GET_THREAD_NUM
@@ -210,8 +211,11 @@ subroutine xtbMain(env, argParser)
    ! ------------------------------------------------------------------------
    !> read the command line arguments
    call parseArguments(env, argParser, xcontrol, fnv, acc, lgrad, &
-      & restart, gsolvstate, strict, copycontrol, coffee, printTopo, oniom, tblite)
-
+      & restart, gsolvstate, gff_der, strict, copycontrol, coffee, printTopo, oniom, tblite)
+   
+   if (gff_der) then
+      gff_der_print = .true.
+   end if
    nFiles = argParser%countFiles()
    select case(nFiles)
    case(0)
@@ -1126,7 +1130,7 @@ end subroutine xtbMain
 
 !> Parse command line arguments and forward them to settings
 subroutine parseArguments(env, args, inputFile, paramFile, accuracy, lgrad, &
-      & restart, gsolvstate, strict, copycontrol, coffee, printTopo, oniom, tblite)
+      & restart, gsolvstate, gff_der, strict, copycontrol, coffee, printTopo, oniom, tblite)
    use xtb_mctc_global, only : persistentEnv
 
    !> Name of error producer
@@ -1149,6 +1153,9 @@ subroutine parseArguments(env, args, inputFile, paramFile, accuracy, lgrad, &
 
    !> Reference state for solvation free energies
    integer, intent(out) :: gsolvstate
+
+   !> Print GFN-FF parameter derivatives
+   logical, intent(out) :: gff_der
 
    !> Restart calculation
    logical, intent(out) :: restart
@@ -1197,6 +1204,7 @@ subroutine parseArguments(env, args, inputFile, paramFile, accuracy, lgrad, &
    accuracy = 1.0_wp
    gsolvstate = solutionState%gsolv
    tblite%color = get_xtb_feature('color')
+   gff_der = .false.
 
    nFlags = args%countFlags()
    call args%nextFlag(flag)
@@ -1353,11 +1361,12 @@ subroutine parseArguments(env, args, inputFile, paramFile, accuracy, lgrad, &
          call env%warning("The use of '"//flag//"' is discouraged, " //&
             & "please use '--gfn 0' next time", source)
       
-      case('--gfnff')
+      case('--gfnff', '--gff')
          call set_exttyp('ff')
       
-      case('--gff')
+      case('--gfnff_der')
          call set_exttyp('ff')
+         gff_der = .true.
 
       case('--iff')
          call set_exttyp('iff')

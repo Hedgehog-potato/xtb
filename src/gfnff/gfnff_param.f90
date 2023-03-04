@@ -22,7 +22,7 @@ module xtb_gfnff_param
    use xtb_gfnff_topology, only : TGFFTopology
    implicit none
    private
-   public :: ini, gff_print, make_chrg, efield
+   public :: ini, gff_print, make_chrg, efield, gff_der_print
    public :: gfnff_set_param, gfnff_load_param, gfnff_read_param
    public :: gfnff_param_alloc, gfnff_param_dealloc, gfnff_thresholds
    public :: gffVersion
@@ -58,6 +58,7 @@ module xtb_gfnff_param
    logical  :: ini       !make a neghbour lsit or use existing one?
    logical  :: gff_print = .true. !shows timing of energy + gradient
    logical  :: make_chrg = .true. !generates new eeq chareges based on current geometry
+   logical  :: gff_der_print = .false. !gfn-ff parameters derivatives print
 
    real(wp), parameter :: chi_angewChem2020(86) = [&
       & 1.227054_wp, 1.451412_wp, 0.813363_wp, 1.062841_wp, 1.186499_wp, &
