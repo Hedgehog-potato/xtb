@@ -59,7 +59,7 @@ contains
 !
 !---------------------------------------------------
 
-   subroutine gfnff_eg(env,pr,n,ichrg,at,xyz,makeq,g,etot,res_gff, &
+   subroutine gfnff_eg(env,pr,n,ichrg,at,xyz,makeq,g,etot,res_gff,der_res, &
          & param,topo,nlist,solvation,update,version,accuracy)
       use xtb_mctc_accuracy, only : wp
       use xtb_gfnff_param, only : efield, gffVersion, gfnff_thresholds
@@ -71,6 +71,7 @@ contains
       character(len=*), parameter :: source = 'gfnff_eg'
       type(TEnvironment), intent(inout) :: env
       type(scc_results),intent(out) :: res_gff
+      type(gfnff_derivative_results), allocatable, intent(inout) :: der_res
       type(TGFFData), intent(in) :: param
       type(TGFFTopology), intent(in) :: topo
       type(TGFFNeighbourList), intent(inout) :: nlist
@@ -96,7 +97,7 @@ contains
       integer lin
       logical ex, require_update
       integer nhb1, nhb2, nxb
-      real*8  r2,rab,qq0,erff,dd,dum1,r3(3),t8,dum,t22,t39
+      real*8  r2,rab,qq0,erff,dd,dum1,r3(3),t8,dum,t22,t39,der_dum_i, der_dum_j
       real*8  dx,dy,dz,yy,t4,t5,t6,alpha,t20
       real*8  repab,t16,t19,t26,t27,xa,ya,za,cosa,de,t28
       real*8  gammij,eesinf,etmp,phi,valijklff
@@ -348,9 +349,9 @@ contains
       deallocate(dcn)
 
       !$omp parallel do default(none) reduction(+:g, ebond) &
-      !$omp shared(grab0, topo, param, rab0, srab, xyz, at, hb_cn, hb_dcn, n) &
+      !$omp shared(grab0, topo, param, rab0, srab, xyz, at, hb_cn, hb_dcn, n, der_res, env) &
       !$omp private(i, k, iat, jat, ij, rab, rij, drij, t8, dr, dum, yy, &
-      !$omp& dx, dy, dz, t4, t5, t6, ati, atj)
+      !$omp& dx, dy, dz, t4, t5, t6, ati, atj, der_dum_i, der_dum_j)
       do i=1,topo%nbond
          iat=topo%blist(1,i)
          jat=topo%blist(2,i)
@@ -361,10 +362,12 @@ contains
          rij=rab0(i)
          drij=grab0(:,:,i)
          if (topo%nr_hb(i).ge.1) then
-            call egbond_hb(i,iat,jat,rab,rij,drij,hb_cn,hb_dcn,n,at,xyz,ebond,g,param,topo)
+            call egbond_hb(i,iat,jat,rab,rij,drij,hb_cn,hb_dcn,n,at,xyz,ebond,der_dum_i,der_dum_j,g,param,topo)
          else
-            call egbond(i,iat,jat,rab,rij,drij,n,at,xyz,ebond,g,topo)
+            call egbond(i,iat,jat,rab,rij,drij,n,at,xyz,ebond,der_dum_i,der_dum_j,g,topo)
          end if
+         der_res%d_bond(ati) = der_res%d_bond(ati) + der_dum_i
+         der_res%d_bond(atj) = der_res%d_bond(atj) + der_dum_j
       enddo
       !$omp end parallel do
 
@@ -637,7 +640,7 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-      subroutine egbond(i,iat,jat,rab,rij,drij,n,at,xyz,e,g,topo)
+      subroutine egbond(i,iat,jat,rab,rij,drij,n,at,xyz,e,deri,derj,g,topo)
       implicit none
       !Dummy
       type(TGFFTopology), intent(in) :: topo
@@ -651,6 +654,8 @@ contains
       real*8,intent(in)    :: drij(3,n)
       real*8,intent(in)    :: xyz(3,n)
       real*8,intent(inout) :: e
+      real*8,intent(out) :: deri
+      real*8,intent(out) :: derj
       real*8,intent(inout) :: g(3,n)
       !Stack
       integer j,k
@@ -662,6 +667,8 @@ contains
          t8 =topo%vbond(2,i)
          dr =rab-rij
          dum=topo%vbond(3,i)*exp(-t8*dr**2)
+         deri = topo%vbond(4,i)*exp(-t8*dr**2)
+         derj = topo%vbond(5,i)*exp(-t8*dr**2)
          e=e+dum                      ! bond energy
          yy=2.0d0*t8*dr*dum
          dx=xyz(1,iat)-xyz(1,jat)
@@ -687,7 +694,7 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-      subroutine egbond_hb(i,iat,jat,rab,rij,drij,hb_cn,hb_dcn,n,at,xyz,e,g,param,topo)
+      subroutine egbond_hb(i,iat,jat,rab,rij,drij,hb_cn,hb_dcn,n,at,xyz,e,deri,derj,g,param,topo)
       implicit none
       !Dummy
       type(TGFFData), intent(in) :: param
@@ -704,6 +711,8 @@ contains
       real*8,intent(in)    :: hb_cn(n)
       real*8,intent(in)    :: hb_dcn(3,n,n)
       real*8,intent(inout) :: e
+      real*8,intent(out) :: deri
+      real*8,intent(out) :: derj
       real*8,intent(inout) :: g(3,n)
       !Stack
       integer j,k
@@ -729,6 +738,8 @@ contains
          t8 =(-t1*hb_cn(hbH)+1.0)*topo%vbond(2,i)
          dr =rab-rij
          dum=topo%vbond(3,i)*exp(-t8*dr**2)
+         deri = topo%vbond(4,i)*exp(-t8*dr**2)
+         derj = topo%vbond(5,i)*exp(-t8*dr**2)
          e=e+dum                      ! bond energy
          yy=2.0d0*t8*dr*dum
          dx=xyz(1,iat)-xyz(1,jat)

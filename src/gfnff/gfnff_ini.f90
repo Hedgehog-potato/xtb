@@ -1005,7 +1005,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
       call gfnffrab(mol%n,mol%at,cn,rtmp)           ! guess RAB for output
 
       topo%nbond_vbond = topo%nbond
-      allocate( topo%vbond(3,topo%nbond), source = 0.0d0 )
+      allocate( topo%vbond(5,topo%nbond), source = 0.0d0 )
 
       write(env%unit,*)
       write(env%unit,'(10x,"#atoms :",3x,i0)') mol%n
@@ -1214,6 +1214,8 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
 
 ! tot prefactor        atoms              spec     typ       qterm    heavy-M  pi   XH(3ring,OH...) CN for M
          topo%vbond(3,i) = -param%bond(ia)*param%bond(ja) * ringf * bstrength * fqq * fheavy * fpi * fxh * fcn
+         topo%vbond(4,i) = -param%bond(ja) * ringf * bstrength * fqq * fheavy * fpi * fxh * fcn                !derivative ia
+         topo%vbond(5,i) = -param%bond(ia) * ringf * bstrength * fqq * fheavy * fpi * fxh * fcn                !derivative ja
 !        write(env%unit,*) bond(ia),bond(ja),ringf,bstrength,fqq,fheavy,fpi,fxh
 
 ! output

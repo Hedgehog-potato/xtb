@@ -198,11 +198,6 @@ subroutine singlepoint(self, env, mol, chk, printlevel, restart, &
    if (gff_der_print) then
       allocate(der_res)
       call der_res%allocate(86)
-      if (allocated(der_res)) then
-         write(env%unit, '(9x,"::",1x,a,f23.12,1x,a,1x,"::")') "gff allocated---------------------------------------------"
-      else
-         write(env%unit, '(9x,"::",1x,a,f23.12,1x,a,1x,"::")') "gff not allocated---------------------------------------------"
-      end if
    end if
 
    if (allocated(self%solvation)) then
@@ -214,7 +209,7 @@ subroutine singlepoint(self, env, mol, chk, printlevel, restart, &
    !  actual calculation
    pr = gff_print .and. printlevel > 0
    call gfnff_eg(env,pr,mol%n,nint(mol%chrg),mol%at,mol%xyz,make_chrg, &
-      & gradient,energy,results,self%param,self%topo,chk%nlist,solvation,&
+      & gradient,energy,results,der_res,self%param,self%topo,chk%nlist,solvation,&
       & self%update,self%version,self%accuracy)
 
    call env%check(exitRun)
@@ -264,11 +259,6 @@ subroutine singlepoint(self, env, mol, chk, printlevel, restart, &
       write(env%unit,outfmt) "gradient norm     ", results%gnorm,  "Eh/a0"
       if (.not.set%silent) then
          write(env%unit,'(9x,"::",49("."),"::")')
-         if (allocated(der_res)) then
-            write(env%unit, '(9x,"::",1x,a,f23.12,1x,a,1x,"::")') "gff allocated---------------------------------------------"
-         else
-            write(env%unit, '(9x,"::",1x,a,f23.12,1x,a,1x,"::")') "gff not allocated---------------------------------------------"
-         end if
          call print_gfnff_results(env%unit, results, der_res, set%verbose,allocated(solvation), gff_der_print)
          write(env%unit,outfmt) "add. restraining  ", efix,       "Eh   "
          write(env%unit,outfmt) "total charge      ", sum(chk%nlist%q), "e    "
@@ -315,9 +305,9 @@ subroutine print_gfnff_results(iunit,res_gff, der_res, verbose,lsolv, deriv_prin
    end if
    if (deriv_print) then
       call open_file(derfile,'gfnff_parameters_derivatives.txt','w') 
-      write(iunit, outfmt) "derivatives must be printed"
+      !write(iunit, outfmt) "derivatives must be printed"
       if (derfile.ne.-1) then 
-         write(iunit, outfmt) "derivatives if passed"
+         !write(iunit, outfmt) "derivatives if passed"
          do i = 1, 86
             write (derfile, der_outfmt) &
             & der_res%d_chi(i),der_res%d_gam(i),der_res%d_cnf(i),der_res%d_alp(i), &
@@ -325,11 +315,11 @@ subroutine print_gfnff_results(iunit,res_gff, der_res, verbose,lsolv, deriv_prin
             & der_res%d_angl(i), der_res%d_angl2(i), der_res%d_tors(i), der_res%d_tors2(i)
          end do
       end if
-      write(iunit, outfmt) "derivatives printed"
+      !write(iunit, outfmt) "derivatives printed"
       call close_file(derfile)
-      write(iunit, outfmt) "derivatives closed"
+      !write(iunit, outfmt) "derivatives closed"
       call der_res%deallocate()
-      write(iunit, outfmt) "derivatives deallocated"
+      !write(iunit, outfmt) "derivatives deallocated"
    end if
 end subroutine print_gfnff_results
 
