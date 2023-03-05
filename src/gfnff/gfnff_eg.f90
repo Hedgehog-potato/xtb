@@ -211,7 +211,7 @@ contains
 
       if (pr) call timer%measure(2,'non bonded repulsion')
       !$omp parallel do default(none) reduction(+:erep, g) &
-      !$omp shared(n, at, xyz, srab, sqrab, repthr, topo, param) &
+      !$omp shared(n, at, xyz, srab, sqrab, repthr, topo, param, der_res) &
       !$omp private(iat, jat, m, ij, ati, atj, rab, r2, r3, t8, t16, t19, t26, t27)
       do iat=1,n
          m=iat*(iat-1)/2
@@ -228,6 +228,8 @@ contains
          t8 =t16*topo%alphanb(ij)
          t26=exp(-t8)*param%repz(ati)*param%repz(atj)*param%repscaln
          erep=erep+t26/rab !energy
+         der_res%d_repan(ati) = der_res%d_repan(ati) - t8*t26/(2.0d0*rab*param%repan(ati))
+         der_res%d_repan(atj) = der_res%d_repan(atj) - t8*t26/(2.0d0*rab*param%repan(atj))
          t27=t26*(1.5d0*t8+1.0d0)/t19
          r3 =(xyz(:,iat)-xyz(:,jat))*t27
          g(:,iat)=g(:,iat)-r3
@@ -378,7 +380,7 @@ contains
 !!!!!!!!!!!!!!!!!!
 
       !$omp parallel do default(none) reduction(+:erep, g) &
-      !$omp shared(topo, param, at, sqrab, srab, xyz) &
+      !$omp shared(topo, param, at, sqrab, srab, xyz, der_res) &
       !$omp private(i, iat, jat, ij, xa, ya, za, dx, dy, dz, r2, rab, ati, atj, &
       !$omp& alpha, repab, t16, t19, t26, t27)
       do i=1,topo%nbond
@@ -400,6 +402,8 @@ contains
          t16=r2**0.75d0
          t19=t16*t16
          t26=exp(-alpha*t16)*repab
+         der_res%d_repa(ati) = der_res%d_repa(ati) - alpha*t16*t26/(2.0d0*rab*param%repa(ati))
+         der_res%d_repa(atj) = der_res%d_repa(atj) - alpha*t16*t26/(2.0d0*rab*param%repa(atj))
          erep=erep+t26/rab !energy
          t27=t26*(1.5d0*alpha*t16+1.0d0)/t19
          g(1,iat)=g(1,iat)-dx*t27
