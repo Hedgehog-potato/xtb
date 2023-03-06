@@ -322,10 +322,10 @@ contains
     if (printTopo%vtors) then ! vtors(2,ntors)
       write (iunit, '(3x,''"vtors":'',"[")')
       do j = 1, topo%ntors - 1
-        write (iunit, '(3x,"[",*(f25.15,:,","))', advance='no') topo%vtors(:, j)
+        write (iunit, '(3x,"[",*(f25.15,:,","))', advance='no') topo%vtors(1:2, j)
         write (iunit, '("],")')
       end do
-      write (iunit, '(3x,"[",*(f25.15,:,","),"]",/)', advance='no') topo%vtors(:, topo%ntors)
+      write (iunit, '(3x,"[",*(f25.15,:,","),"]",/)', advance='no') topo%vtors(1:2, topo%ntors)
       write (iunit, '("]")')
       write (iunit, '(3x,"],")')
     end if

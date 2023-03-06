@@ -448,18 +448,22 @@ contains
 
       if(topo%ntors.gt.0)then
          !$omp parallel do default(none) reduction(+:etors, g) &
-         !$omp shared(param, topo, n, at, xyz) &
-         !$omp private(m, i, j, k, l, etmp, g4tmp)
+         !$omp shared(param, topo, n, at, xyz, der_res) &
+         !$omp private(m, i, j, k, l, etmp, g4tmp, der_dum_i)
          do m=1,topo%ntors
             i=topo%tlist(1,m)
             j=topo%tlist(2,m)
             k=topo%tlist(3,m)
             l=topo%tlist(4,m)
-            call egtors(m,i,j,k,l,n,at,xyz,etmp,g4tmp,param,topo)
+            call egtors(m,i,j,k,l,n,at,xyz,etmp,der_dum_i,g4tmp,param,topo)
             g(1:3,i)=g(1:3,i)+g4tmp(1:3,1)
             g(1:3,j)=g(1:3,j)+g4tmp(1:3,2)
             g(1:3,k)=g(1:3,k)+g4tmp(1:3,3)
             g(1:3,l)=g(1:3,l)+g4tmp(1:3,4)
+            der_res%d_tors2(at(i)) = der_res%d_tors2(at(i)) + der_dum_i* param%tors (at(j))*param%tors (at(k))*param%tors2(at(l))
+            der_res%d_tors (at(j)) = der_res%d_tors (at(j)) + der_dum_i* param%tors2(at(i))*param%tors (at(k))*param%tors2(at(l))
+            der_res%d_tors (at(k)) = der_res%d_tors (at(k)) + der_dum_i* param%tors2(at(i))*param%tors (at(j))*param%tors2(at(l))
+            der_res%d_tors2(at(l)) = der_res%d_tors2(at(l)) + der_dum_i* param%tors2(at(i))*param%tors (at(j))*param%tors (at(k))
             etors=etors+etmp
          enddo
          !$omp end parallel do
@@ -1032,13 +1036,14 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-      subroutine egtors(m,i,j,k,l,n,at,xyz,e,g,param,topo)
+      subroutine egtors(m,i,j,k,l,n,at,xyz,e,der,g,param,topo)
       use xtb_mctc_constants
       implicit none
       type(TGFFData), intent(in) :: param
       type(TGFFTopology), intent(in) :: topo
       integer m,n,at(n)
       integer i,j,k,l
+      real*8 der
       real*8 xyz(3,n),g(3,4),e
 
       real*8  c0,kijk,va(3),vb(3),vc(3),cosa
@@ -1071,6 +1076,7 @@ contains
          x1cos=cos(c1)
          x1sin=sin(c1)
          et =(1.+x1cos)*topo%vtors(2,m)
+         der = (1.+x1cos)*topo%vtors(3,m)*damp
          dij=-rn*x1sin*topo%vtors(2,m)*damp
          term1(1:3)=et*damp2ij*dampjk*dampkl*vab(1:3)
          term2(1:3)=et*damp2jk*dampij*dampkl*vcb(1:3)
@@ -1099,9 +1105,11 @@ contains
          x1cos=cos(c1)
          x1sin=sin(c1)
          et   =(1.+x1cos)*topo%vtors(2,m)
+         der = (1.+x1cos)*topo%vtors(3,m)*damp
          dij  =-x1sin*topo%vtors(2,m)*damp
          else                     ! double min at phi0,-phi0
          et =   topo%vtors(2,m)*(cos(phi) -cos(phi0))**2
+         der = topo%vtors(3,m)*(cos(phi) -cos(phi0))**2*damp
          dij=2.*topo%vtors(2,m)* sin(phi)*(cos(phi0)-cos(phi))*damp
          endif
          term1(1:3)=et*damp2ij*dampjk*dampjl*vab(1:3)

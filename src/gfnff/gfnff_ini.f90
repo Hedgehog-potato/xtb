@@ -70,6 +70,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
       real(wp) bstrength
       real(wp) xx(20)
       real(wp) fkl,qreps,fbsmall,bohr
+      real(wp) d_tor_ij, d_tor_kl
 
       parameter (bohr=1.0_wp/0.52917726_wp)
 
@@ -1583,7 +1584,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
 
       topo%ntors_alloc = topo%ntors
       allocate( topo%tlist(5,topo%ntors), source = 0 )
-      allocate( topo%vtors(2,topo%ntors), source = 0.0d0 )
+      allocate( topo%vtors(3,topo%ntors), source = 0.0d0 )
       topo%ntors=0
       do m=1,topo%nbond
          ii=topo%blist(1,m)
@@ -1609,13 +1610,13 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
          do jneig=1,topo%nb(20,jj)
             if(mol%at(topo%nb(jneig,jj)).eq.1) nhj=nhj+1
          enddo
-         fij=fij*(dble(nhi)*dble(nhj))**0.07 ! n H term
+         d_tor_ij = (dble(nhi)*dble(nhj))**0.07 ! n H term
          ! amides and alpha carbons in peptides/proteins
-         if (alphaCO(mol%n,mol%at,topo%hyb,topo%nb,piadr,ii,jj)) fij = fij * 1.3d0
-         if (amide(mol%n,mol%at,topo%hyb,topo%nb,piadr,ii).and.topo%hyb(jj).eq.3.and.mol%at(jj).eq.6) fij = fij * 1.3d0
-         if (amide(mol%n,mol%at,topo%hyb,topo%nb,piadr,jj).and.topo%hyb(ii).eq.3.and.mol%at(ii).eq.6) fij = fij * 1.3d0
+         if (alphaCO(mol%n,mol%at,topo%hyb,topo%nb,piadr,ii,jj)) d_tor_ij = d_tor_ij * 1.3d0
+         if (amide(mol%n,mol%at,topo%hyb,topo%nb,piadr,ii).and.topo%hyb(jj).eq.3.and.mol%at(jj).eq.6) d_tor_ij = d_tor_ij * 1.3d0
+         if (amide(mol%n,mol%at,topo%hyb,topo%nb,piadr,jj).and.topo%hyb(ii).eq.3.and.mol%at(ii).eq.6) d_tor_ij = d_tor_ij * 1.3d0
          ! hypervalent
-         if(btyp(m).eq.4)                                                                   fij = fij * 0.2d0
+         if(btyp(m).eq.4)                                                                   d_tor_ij = d_tor_ij * 0.2d0
 !        loop over neighbors of ij
          do ineig=1,topo%nb(20,ii)
             kk=topo%nb(ineig,ii)
@@ -1626,13 +1627,14 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
                if(ll.eq.kk) cycle
                if(chktors(mol%n,mol%xyz,ii,jj,kk,ll)) cycle  ! near 180
                fkl=param%tors2(mol%at(kk))*param%tors2(mol%at(ll))       ! outer kl term
-               if(mol%at(kk).eq.7.and.piadr(kk).eq.0) fkl=param%tors2(mol%at(kk))*param%tors2(mol%at(ll))*0.5
-               if(mol%at(ll).eq.7.and.piadr(ll).eq.0) fkl=param%tors2(mol%at(kk))*param%tors2(mol%at(ll))*0.5
-               if(fkl.lt.gen%fcthr)               cycle
+               d_tor_kl = 1.0d0
+               if(mol%at(kk).eq.7.and.piadr(kk).eq.0) d_tor_kl=d_tor_ij*0.5
+               if(mol%at(ll).eq.7.and.piadr(ll).eq.0) d_tor_kl=d_tor_ij*0.5
+               if(fkl*d_tor_kl.lt.gen%fcthr)               cycle
                if(param%tors(mol%at(kk)).lt.0.or.param%tors(mol%at(ll)).lt.0) cycle ! no negative values
                f1 = gen%torsf(1)
                f2 = 0.0d0
-               fkl=fkl*(dble(topo%nb(20,kk))*dble(topo%nb(20,ll)))**(-0.14)  ! CN term
+               d_tor_kl=d_tor_kl*(dble(topo%nb(20,kk))*dble(topo%nb(20,ll)))**(-0.14)  ! CN term
 
 !-----------------------
 ! definitions come here
@@ -1713,13 +1715,13 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
                                 f1 = f1 * 0.55
                endif
 
-               if(topo%hyb(kk).eq.5.or.topo%hyb(ll).eq.5) fkl = fkl * 1.5 ! hypervalent corr.
+               if(topo%hyb(kk).eq.5.or.topo%hyb(ll).eq.5) d_tor_kl = d_tor_kl * 1.5 ! hypervalent corr.
 !--------------------
 ! end of definitions
 !-------------------
 
 ! total FC            sigma       pi             charge central outer kl
-               fctot = (f1 + 10.d0*gen%torsf(2)*f2) * fqq * fij * fkl
+               fctot = (f1 + 10.d0*gen%torsf(2)*f2) * fqq * d_tor_ij * d_tor_kl
 
                if(fctot.gt.gen%fcthr) then ! avoid tiny potentials
                   topo%ntors=topo%ntors+1
@@ -1733,7 +1735,8 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
                   topo%tlist(4,topo%ntors)=kk
                   topo%tlist(5,topo%ntors)=nrot
                   topo%vtors(1,topo%ntors)=phi*pi/180.0d0
-                  topo%vtors(2,topo%ntors)=fctot
+                  topo%vtors(2,topo%ntors)=fctot*fij*fkl
+                  topo%vtors(3,topo%ntors)=fctot
 !                 printout
                   phi=valijklff(mol%n,mol%xyz,ll,ii,jj,kk)
                   if(pr)write(env%unit,'(4i5,2x,i2,5x,i2,4x,3f8.3)') &
@@ -1757,7 +1760,8 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
                   topo%tlist(4,topo%ntors)=kk
                   topo%tlist(5,topo%ntors)=1
                   topo%vtors(1,topo%ntors)=pi
-                  topo%vtors(2,topo%ntors)= ff * fij * fkl *fqq
+                  topo%vtors(2,topo%ntors)= ff * fij * d_tor_ij * fkl * d_tor_kl *fqq
+                  topo%vtors(3,topo%ntors)= ff * d_tor_ij * d_tor_kl * fqq
                   if(pr)write(env%unit,'(4i5,2x,i2,5x,i2,4x,3f8.3)') &
      &            ii,jj,kk,ll,topo%tlist(5,topo%ntors),rings,topo%vtors(1,topo%ntors)*180./pi,phi*180./pi,topo%vtors(2,topo%ntors)
                endif
@@ -1802,6 +1806,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
            topo%tlist(5,topo%ntors)=-1
            topo%vtors(1,topo%ntors)=r0*pi/180. ! double min at +/- phi0
            topo%vtors(2,topo%ntors)=0.0d0
+           topo%vtors(3,topo%ntors)=0.0d0
            do m=1,topo%nb(20,i)
               idum=topo%nb(m,i)
               topo%vtors(2,topo%ntors)=topo%vtors(2,topo%ntors)+ff*sqrt(param%repz(mol%at(idum)))  ! NX3 has higher inv barr. than NH3
