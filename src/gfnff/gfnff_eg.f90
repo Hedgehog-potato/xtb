@@ -97,7 +97,7 @@ contains
       integer lin
       logical ex, require_update
       integer nhb1, nhb2, nxb
-      real*8  r2,rab,qq0,erff,dd,dum1,r3(3),t8,dum,t22,t39,der_dum_i, der_dum_j
+      real*8  r2,rab,qq0,erff,dd,dum1,r3(3),t8,dum,t22,t39,der_dum_i,der_dum_j,der_dum_k
       real*8  dx,dy,dz,yy,t4,t5,t6,alpha,t20
       real*8  repab,t16,t19,t26,t27,xa,ya,za,cosa,de,t28
       real*8  gammij,eesinf,etmp,phi,valijklff
@@ -424,17 +424,20 @@ contains
       if (pr) call timer%measure(8,'bend and torsion')
       if(topo%nangl.gt.0)then
          !$omp parallel do default(none) reduction (+:eangl, g) &
-         !$omp shared(n, at, xyz, topo, param) &
-         !$omp private(m, j, i, k, etmp, g3tmp)
+         !$omp shared(n, at, xyz, topo, param, der_res) &
+         !$omp private(m, j, i, k, etmp, g3tmp, der_dum_i, der_dum_j, der_dum_k)
          do m=1,topo%nangl
             j = topo%alist(1,m)
             i = topo%alist(2,m)
             k = topo%alist(3,m)
-            call egbend(m,j,i,k,n,at,xyz,etmp,g3tmp,param,topo)
+            call egbend(m,j,i,k,n,at,xyz,etmp,der_dum_i,der_dum_j,der_dum_k,g3tmp,param,topo)
             g(1:3,j)=g(1:3,j)+g3tmp(1:3,1)
             g(1:3,i)=g(1:3,i)+g3tmp(1:3,2)
             g(1:3,k)=g(1:3,k)+g3tmp(1:3,3)
             eangl=eangl+etmp
+            der_res%d_angl2(at(j)) = der_res%d_angl2(at(j)) + der_dum_j
+            der_res%d_angl(at(i)) = der_res%d_angl(at(i)) + der_dum_i
+            der_res%d_angl2(at(k)) = der_res%d_angl2(at(k)) + der_dum_k
          enddo
          !$omp end parallel do
       endif
@@ -835,7 +838,7 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-      subroutine egbend(m,j,i,k,n,at,xyz,e,g,param,topo)
+      subroutine egbend(m,j,i,k,n,at,xyz,e,der_i,der_j,der_k,g,param,topo)
       use xtb_mctc_constants
       implicit none
       type(TGFFData), intent(in) :: param
@@ -843,6 +846,7 @@ contains
       integer m,n,at(n)
       integer i,j,k
       real*8 xyz(3,n),g(3,3),e
+      real*8 der_i, der_j, der_k
 
       real*8  c0,kijk,va(3),vb(3),vc(3),cosa
       real*8  dt,ea,dedb(3),dedc(3),rmul2,rmul1,deddt
@@ -876,9 +880,15 @@ contains
          if(pi-c0.lt.1.d-6)then ! linear
          dt  = theta - c0
          ea  = kijk * dt**2
+         der_i = topo%vangl(4, m) * dt**2 * damp
+         der_j = topo%vangl(3, m) * dt**2 * damp
+         der_k = topo%vangl(5, m) * dt**2 * damp
          deddt = 2.d0 * kijk * dt
          else
          ea=kijk*(cosa-cos(c0))**2
+         der_i = topo%vangl(4, m) * (cosa-cos(c0))**2 * damp
+         der_j = topo%vangl(3, m) * (cosa-cos(c0))**2 * damp
+         der_k = topo%vangl(5, m) * (cosa-cos(c0))**2 * damp
          deddt=2.0d0*kijk*sin(theta)*(cos(c0)-cosa)
          endif
 

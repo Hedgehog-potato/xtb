@@ -1304,7 +1304,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
 
       topo%nangl_alloc = topo%nangl
       allocate( topo%alist(3,topo%nangl), source = 0 )
-      allocate( topo%vangl(2,topo%nangl), source = 0.0d0 )
+      allocate( topo%vangl(5,topo%nangl), source = 0.0d0 )
       topo%nangl=0
       do i=1,mol%n
          nn=topo%nb(20,i)
@@ -1552,6 +1552,9 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
 
 !                          central*neigbor charge spec. met.  small angle corr.
                topo%vangl(2,topo%nangl)= fijk * fqq * f2 * fn * fbsmall * feta
+               topo%vangl(3,topo%nangl)= param%angl2(atj)*param%angl2(atk) * fqq * f2 * fn * fbsmall * feta
+               topo%vangl(4,topo%nangl)= param%angl(ati)*param%angl2(atk) * fqq * f2 * fn * fbsmall * feta
+               topo%vangl(5,topo%nangl)= param%angl(ati)*param%angl2(atj) * fqq * f2 * fn * fbsmall * feta
 !              write(env%unit,*) param%angl(ati),param%angl2(atj),param%angl2(atk), param%angl(ati)*param%angl2(atj)*param%angl2(atk), fqq,f2,fn,fbsmall
                if(pr)write(env%unit,'(3i5,2x,3f8.3,l2,i4)') ii,jj,kk,r0,phi*180./pi,topo%vangl(2,topo%nangl),picon,rings
             enddo

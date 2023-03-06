@@ -581,7 +581,7 @@ module xtb_gfnff_param
      if (.not.allocated(topo%alist)) allocate( topo%alist(3,topo%nangl_alloc), source = 0 )
      if (.not.allocated(topo%tlist)) allocate( topo%tlist(5,topo%ntors_alloc), source = 0 )
      if (.not.allocated(topo%vbond)) allocate( topo%vbond(5,topo%nbond_vbond), source = 0.0d0 )
-     if (.not.allocated(topo%vangl)) allocate( topo%vangl(2,topo%nangl_alloc), source = 0.0d0 )
+     if (.not.allocated(topo%vangl)) allocate( topo%vangl(5,topo%nangl_alloc), source = 0.0d0 )
      if (.not.allocated(topo%vtors)) allocate( topo%vtors(2,topo%ntors_alloc), source = 0.0d0 )
 
    end subroutine gfnff_param_alloc
