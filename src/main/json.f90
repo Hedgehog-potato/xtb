@@ -332,20 +332,20 @@ contains
     if (printTopo%vbond) then ! vbond(3,nbond)
       write (iunit, '(3x,''"vbond":'',"[")')
       do j = 1, topo%nbond - 1
-        write (iunit, '(3x,"[",*(f25.15,:,","))', advance='no') topo%vbond(:, j)
+        write (iunit, '(3x,"[",*(f25.15,:,","))', advance='no') topo%vbond(1:3, j)
         write (iunit, '("],")')
       end do
-      write (iunit, '(3x,"[",*(f25.15,:,","),"]",/)', advance='no') topo%vbond(:, topo%nbond)
+      write (iunit, '(3x,"[",*(f25.15,:,","),"]",/)', advance='no') topo%vbond(1:3, topo%nbond)
       write (iunit, '("]")')
       write (iunit, '(3x,"],")')
     end if
     if (printTopo%vangl) then ! vangl(2,nangl)
       write (iunit, '(3x,''"vangl":'',"[")')
       do j = 1, topo%nangl - 1
-        write (iunit, '(3x,"[",*(f25.15,:,","))', advance='no') topo%vangl(:, j)
+        write (iunit, '(3x,"[",*(f25.15,:,","))', advance='no') topo%vangl(1:2, j)
         write (iunit, '("],")')
       end do
-      write (iunit, '(3x,"[",*(f25.15,:,","),"]",/)', advance='no') topo%vangl(:, topo%nangl)
+      write (iunit, '(3x,"[",*(f25.15,:,","),"]",/)', advance='no') topo%vangl(1:2, topo%nangl)
       write (iunit, '("]")')
       write (iunit, '(3x,"],")')
     end if
