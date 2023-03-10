@@ -435,8 +435,8 @@ contains
             g(1:3,i)=g(1:3,i)+g3tmp(1:3,2)
             g(1:3,k)=g(1:3,k)+g3tmp(1:3,3)
             eangl=eangl+etmp
-            der_res%d_angl2(at(j)) = der_res%d_angl2(at(j)) + der_dum_j
-            der_res%d_angl(at(i)) = der_res%d_angl(at(i)) + der_dum_i
+            der_res%d_angl(at(j)) = der_res%d_angl(at(j)) + der_dum_j
+            der_res%d_angl2(at(i)) = der_res%d_angl2(at(i)) + der_dum_i
             der_res%d_angl2(at(k)) = der_res%d_angl2(at(k)) + der_dum_k
          enddo
          !$omp end parallel do
