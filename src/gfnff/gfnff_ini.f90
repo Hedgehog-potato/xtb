@@ -1556,6 +1556,10 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
                topo%vangl(3,topo%nangl)= param%angl2(atj)*param%angl2(atk) * fqq * f2 * fn * fbsmall * feta
                topo%vangl(4,topo%nangl)= param%angl(ati)*param%angl2(atk) * fqq * f2 * fn * fbsmall * feta
                topo%vangl(5,topo%nangl)= param%angl(ati)*param%angl2(atj) * fqq * f2 * fn * fbsmall * feta
+               if (atj.eq.atk) then
+                  topo%vangl(4,topo%nangl) = topo%vangl(4,topo%nangl)*2.0d0
+                  topo%vangl(5,topo%nangl) = topo%vangl(5,topo%nangl)*2.0d0
+               endif
 !              write(env%unit,*) param%angl(ati),param%angl2(atj),param%angl2(atk), param%angl(ati)*param%angl2(atj)*param%angl2(atk), fqq,f2,fn,fbsmall
                if(pr)write(env%unit,'(3i5,2x,3f8.3,l2,i4)') ii,jj,kk,r0,phi*180./pi,topo%vangl(2,topo%nangl),picon,rings
             enddo

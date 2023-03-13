@@ -437,7 +437,7 @@ contains
             eangl=eangl+etmp
             der_res%d_angl(at(j)) = der_res%d_angl(at(j)) + der_dum_j
             der_res%d_angl2(at(i)) = der_res%d_angl2(at(i)) + der_dum_i
-            der_res%d_angl2(at(k)) = der_res%d_angl2(at(k)) + der_dum_k
+            if(at(i).ne.at(k)) der_res%d_angl2(at(k)) = der_res%d_angl2(at(k)) + der_dum_k
          enddo
          !$omp end parallel do
       endif
