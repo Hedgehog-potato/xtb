@@ -402,8 +402,12 @@ contains
          t16=r2**0.75d0
          t19=t16*t16
          t26=exp(-alpha*t16)*repab
-         der_res%d_repa(ati) = der_res%d_repa(ati) - alpha*t16*t26/(2.0d0*rab*param%repa(ati))
-         der_res%d_repa(atj) = der_res%d_repa(atj) - alpha*t16*t26/(2.0d0*rab*param%repa(atj))
+         if (ati.eq.atj) then
+            der_res%d_repa(ati) = der_res%d_repa(ati) - (t16*t26/rab)
+         else
+            der_res%d_repa(ati) = der_res%d_repa(ati) - alpha*t16*t26/(2.0d0*rab*param%repa(ati))
+            der_res%d_repa(atj) = der_res%d_repa(atj) - alpha*t16*t26/(2.0d0*rab*param%repa(atj))
+         endif
          erep=erep+t26/rab !energy
          t27=t26*(1.5d0*alpha*t16+1.0d0)/t19
          g(1,iat)=g(1,iat)-dx*t27
