@@ -1323,36 +1323,38 @@ subroutine getring36(n,at,nbin,a0_in,cout,irout)
 ! included up to 1,4 interactions
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-subroutine goedeckera(env,n,at,nb,pair,q,es,topo)
+subroutine goedeckera(env,n,at,nb,pair,q,es,topo,need_derivatives,cnmax)
    use xtb_mctc_accuracy, only : wp
-   use xtb_mctc_lapack, only : mctc_sytrf, mctc_sytrs
+   use xtb_mctc_la
    implicit none
    character(len=*), parameter :: source = 'gfnff_ini2_goedeckera'
    type(TEnvironment), intent(inout) :: env
-   type(TGFFTopology), intent(in) :: topo
+   type(TGFFTopology), intent(inout) :: topo
+   logical :: need_derivatives !is it right moment to calculate parameter derivatives?
    integer, intent(in)  :: n          ! number of atoms
    integer, intent(in)  :: at(n)      ! ordinal numbers
    integer, intent(in)  :: nb(20,n)   ! neighbors
    real(wp),intent(in)  :: pair(n*(n+1)/2)
    real(wp),intent(out) :: q(n)       ! output charges
    real(wp),intent(out) :: es         ! ES energy
-
+   real(wp),intent(in)  :: cnmax      ! gen%cnmax
 !  local variables
-   logical :: exitRun
-   integer  :: m,i,j,k,l,ii,jj,kk
+   logical :: exitRun, need_der
+   integer  :: m,i,j,k,l,ii,jj,kk,atj,atk
    integer  :: ij,lj
-   integer,allocatable :: ipiv(:)
+   integer,allocatable :: ipiv(:), ipiv2(:), ipivtest(:)
 
    real(wp) :: gammij,sief1,sief2
    real(wp) :: r2,r0
    real(wp) :: rij
-   real(wp) :: tsqrt2pi,bohr
+   real(wp) :: tsqrt2pi,tsqrt1pi,bohr
    real(wp) :: tmp
-   real(wp),allocatable :: A (:,:)
+   real(wp),allocatable :: A (:,:), Rev(:,:), xtest(:)
    real(wp),allocatable :: x(:)
 
 !  parameter
    parameter (tsqrt2pi = 0.797884560802866_wp)
+   parameter (tsqrt1pi = 0.564189583547756_wp)
 
    m=n+topo%nfrag ! # atoms frag constrain
    allocate(A(m,m),x(m),ipiv(m))
@@ -1391,7 +1393,21 @@ subroutine goedeckera(env,n,at,nb,pair,q,es,topo)
       enddo
    enddo
 !  call prmat(6,A,m,m,'A ini')
-
+   need_der = need_derivatives
+   if (n.eq.1) then ! derivatives still = 0, no need to calculate smth else
+      need_der = .False.
+   endif
+   if (need_der) then
+      allocate(Rev(m,m),ipiv2(m))
+      Rev = A
+      call mctc_sytrf(env, Rev, ipiv2)
+      call mctc_sytri(env, Rev, ipiv2)
+      do i=1,m
+         do j=1,i-1
+            Rev(i,j)=Rev(j,i)
+         enddo
+      enddo
+   endif
    call mctc_sytrf(env, a, ipiv)
    call mctc_sytrs(env, a, x, ipiv)
 
@@ -1402,7 +1418,30 @@ subroutine goedeckera(env,n,at,nb,pair,q,es,topo)
    end if
 
    q(1:n) = x(1:n)
-
+   deallocate(A,x,ipiv)
+! derivatives. it's O(n^3)!!!
+   if (need_der) then
+      do i=1,n
+         do j=1,n
+            atj = at(j)
+            topo%dqadchi(atj, i) = topo%dqadchi(atj, i) - Rev(i,j)
+            topo%dqadgam(atj, i) = topo%dqadgam(atj, i) - Rev(i,j)*q(j)
+            topo%dqadcnf(atj, i) = topo%dqadcnf(atj, i) + Rev(i,j)*sqrt(min(dble(topo%nb(20,j)), cnmax))
+            topo%dqadalp(atj, i) = topo%dqadalp(atj, i) + Rev(i,j)*q(j)*tsqrt2pi/topo%alpeeq(j)
+            do k = 1, j-1
+               atk = at(k)
+               gammij=1.d0/sqrt(topo%alpeeq(k)+topo%alpeeq(j))
+               rij=pair(j*(j-1)/2+k)
+               tmp = 2.d0*exp(-(gammij*rij)**2)*tsqrt1pi*(gammij**3)
+               topo%dqadalp(atj, i) = topo%dqadalp(atj, i) + Rev(i,j)*q(k)*tmp*sqrt(topo%alpeeq(j))
+               topo%dqadalp(atk, i) = topo%dqadalp(atk, i) + Rev(i,j)*q(k)*tmp*sqrt(topo%alpeeq(k))
+               topo%dqadalp(atj, i) = topo%dqadalp(atj, i) + Rev(i,k)*q(j)*tmp*sqrt(topo%alpeeq(j))
+               topo%dqadalp(atk, i) = topo%dqadalp(atk, i) + Rev(i,k)*q(j)*tmp*sqrt(topo%alpeeq(k))
+            enddo
+         enddo
+      enddo
+      deallocate(Rev, ipiv2)
+   endif
    if(n.eq.1) q(1)=topo%qfrag(1)
 
 !  energy

@@ -76,7 +76,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
 
       real(wp), parameter :: rabd_cutoff = 13.0_wp
 
-      logical lring,picon,notpicon,bridge,sp3ij,ccij,success
+      logical lring,picon,notpicon,bridge,sp3ij,ccij,success,need_derivatives
       logical heavy,triple,piat,sp3kl,ex,cnij,frag_charges_known
 
       integer,allocatable :: btyp(:),imetal(:),nbm(:,:),nbf(:,:)
@@ -143,6 +143,11 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
       allocate( topo%gameeq(mol%n), source = 0.0d0 )
       allocate( topo%alpeeq(mol%n), source = 0.0d0 )
       allocate( topo%qa(mol%n), source = 0.0d0 )
+      allocate( topo%dqadchi(86, mol%n), source = 0.0d0 )
+      allocate( topo%dqadgam(86, mol%n), source = 0.0d0 )
+      allocate( topo%dqadcnf(86, mol%n), source = 0.0d0 )
+      allocate( topo%dqadalp(86, mol%n), source = 0.0d0 )
+      allocate( topo%der_f(3, mol%n), source = 0.0d0 )
       allocate( dqa(mol%n), source = 0.0d0)
       allocate( qah(mol%n), source = 0.0d0 )
       allocate( nbm(20,mol%n), source = 0 )
@@ -480,7 +485,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
          write(env%unit,*) 'trying auto detection of charge on 2 fragments:'
          topo%qfrag(1)=0
          topo%qfrag(2)=mol%chrg
-         call goedeckera(env,mol%n,mol%at,topo%nb,rtmp,topo%qa,dum1,topo)
+         call goedeckera(env,mol%n,mol%at,topo%nb,rtmp,topo%qa,dum1,topo,.False.,gen%cnmax)
          call env%check(exitRun)
          if (exitRun) then
             call env%error("Failed to generate charges", source)
@@ -488,7 +493,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
          end if
          topo%qfrag(2)=0
          topo%qfrag(1)=mol%chrg
-         call goedeckera(env,mol%n,mol%at,topo%nb,rtmp,topo%qa,dum2,topo)
+         call goedeckera(env,mol%n,mol%at,topo%nb,rtmp,topo%qa,dum2,topo,.False.,gen%cnmax)
          call env%check(exitRun)
          if (exitRun) then
             call env%error("Failed to generate charges", source)
@@ -507,7 +512,8 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
       endif
 
 !     make estimated, topology only EEQ charges from rabd values, including "right" fragment charge
-      call goedeckera(env,mol%n,mol%at,topo%nb,rtmp,topo%qa,ees,topo)
+      need_derivatives = ((qloop_count.eq.1).or.(gen%rqshrink.le.1.d-3))
+      call goedeckera(env,mol%n,mol%at,topo%nb,rtmp,topo%qa,ees,topo,need_derivatives,gen%cnmax)
       call env%check(exitRun)
       if (exitRun) then
          call env%error("Failed to generate charges", source)
@@ -541,7 +547,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
             enddo
             dum2=topo%qfrag(ifrag) ! save
             topo%qfrag(ifrag) = 0 ! make only this EEQ fragment neutral
-            call goedeckera(env,mol%n,mol%at,topo%nb,rtmp,topo%qa,ees,topo) ! for neutral
+            call goedeckera(env,mol%n,mol%at,topo%nb,rtmp,topo%qa,ees,topo,.False.,gen%cnmax) ! for neutral
             call env%check(exitRun)
             if (exitRun) then
                call env%error("Failed to generate charges", source)
@@ -604,6 +610,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
          if(imetal(i).eq.2)              ff=-0.9  ! M TM    ??? too large
          if(param%group(mol%at(i)).eq.8)           ff= 0.0  ! RG
          dgam(i)=topo%qa(i)*ff
+         topo%der_f(1,i) = ff ! f_gamma
       enddo
 
 !     prepare true EEQ parameter, they are ATOMIC not element specific!
@@ -619,7 +626,11 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
          if(param%group(mol%at(i)).eq.7)ff= 0.50
          if(imetal(i).eq.1)   ff= 0.3
          if(imetal(i).eq.2)   ff=-0.1
-         topo%alpeeq(i) = (param%alp(mol%at(i))+ff*topo%qa(i))**2
+         topo%alpeeq(i) = param%alp(mol%at(i))+ff*topo%qa(i)
+         topo%der_f(3,i) = 1.0d0
+         if (topo%alpeeq(i).lt.0) topo%der_f(3,i) = -1.0d0
+         topo%der_f(2,i) = ff ! f_alpha
+         topo%alpeeq(i) = topo%alpeeq(i)**2
       enddo
       deallocate(dgam,dxi)
 
