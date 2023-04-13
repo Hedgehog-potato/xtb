@@ -22,7 +22,7 @@ module xtb_gfnff_eg
    use xtb_gfnff_topology, only : TGFFTopology
    use xtb_solv_gbsa, only : TBorn
    use xtb_type_environment, only : TEnvironment
-   use xtb_mctc_lapack, only : mctc_sytrf, mctc_sytrs
+   use xtb_mctc_lapack, only : mctc_sytrf, mctc_sytrs, mctc_sytri
    use xtb_mctc_blas, only : mctc_gemv
    use xtb_param_sqrtzr4r2, only : sqrtZr4r2
    implicit none
@@ -280,7 +280,7 @@ contains
 
       if (pr) call timer%measure(4,'EEQ energy and q')
       call goed_gfnff(env,accuracy.gt.1,n,at,sqrab,srab,&         ! modified version
-     &                dfloat(ichrg),eeqtmp,cn,nlist%q,ees,solvation,param,topo)  ! without dq/dr
+     &                dfloat(ichrg),eeqtmp,cn,nlist%q,ees,solvation,param,topo, der_res, .True.)  ! without dq/dr
       if (pr) call timer%measure(4)
 
 !!!!!!!!
@@ -628,7 +628,7 @@ contains
         cn = 0
 !       asymtotically for R=inf, Etot is the SIE contaminted EES
 !       which is computed here to get the atomization energy De,n,at(n)
-        call goed_gfnff(env,.true.,n,at,sqrab,srab,dfloat(ichrg),eeqtmp,cn,qtmp,eesinf,solvation,param,topo)
+        call goed_gfnff(env,.true.,n,at,sqrab,srab,dfloat(ichrg),eeqtmp,cn,qtmp,eesinf,solvation,param,topo,der_res, .False.)
         de=-(etot - eesinf)
       endif
 !     write resusts to res type
@@ -1280,14 +1280,17 @@ contains
 !       based on charge densities obtained by a neural network
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-      subroutine goed_gfnff(env,single,n,at,sqrab,r,chrg,eeqtmp,cn,q,es,gbsa,param,topo)
+      subroutine goed_gfnff(env,single,n,at,sqrab,r,chrg,eeqtmp,cn,q,es,gbsa,param,topo,der_res,need_derivatives)
       use xtb_mctc_accuracy, only : wp, sp
       use xtb_mctc_la
+      use xtb_type_data, only: gfnff_derivative_results
       implicit none
       character(len=*), parameter :: source = 'gfnff_eg_goed'
       type(TEnvironment), intent(inout) :: env
       type(TGFFData), intent(in) :: param
       type(TGFFTopology), intent(in) :: topo
+      type(gfnff_derivative_results), intent(inout) :: der_res
+      logical :: need_derivatives        !is it right moment to calculate parameter derivatives?
       logical, intent(in)  :: single     ! real*4 flag for solver
       integer, intent(in)  :: n          ! number of atoms
       integer, intent(in)  :: at(n)      ! ordinal numbers
@@ -1301,20 +1304,29 @@ contains
       type(TBorn), allocatable, intent(in) :: gbsa
 
 !  local variables
-      integer  :: m,i,j,k,ii,ij
-      integer,allocatable :: ipiv(:)
-      real(wp) :: gammij,tsqrt2pi,r2,tmp
-      real(wp),allocatable :: A (:,:),x (:)
-      real(sp),allocatable :: A4(:,:),x4(:)
+      integer  :: m,i,j,k,ii,ij,jm,atk
+      integer,allocatable :: ipiv(:), ipiv2(:)
+      real(wp) :: gammij,tsqrt2pi,tsqrt1pi,r2,tmp,feqj,fneqjm,fdiffjmk,cnmax,fneqij,fdiffijk,feqi,dumi,dumj,dumm,aii,daii,feqj_cut
+      real(wp),allocatable :: A (:,:),x (:), f_alpha(:), f_gamma(:),signalp(:), A_chi (:,:), A_gam (:,:), A_cnf (:,:), A_alp (:,:), dqdchi(:,:), dqdgam(:,:), dqdcnf(:,:), dqdalp(:,:)
+      real(sp),allocatable :: A4(:,:),x4(:), Rev(:,:)
 !  parameter
       parameter (tsqrt2pi = 0.797884560802866_wp)
+      parameter (tsqrt1pi = 0.564189583547756_wp)
       logical :: exitRun
 
       m=n+topo%nfrag ! # atoms + chrg constrain + frag constrain
 
-      allocate(A(m,m),x(m))
+      allocate(A(m,m),x(m), f_alpha(n), f_gamma(n),signalp(n))
+      cnmax = 4.4d0 ! It's workaround, cnmax must be gen%cnmax. If we want to fit it, this should be fixed
+
+      
 !  setup RHS
       do i=1,n
+         if (need_derivatives) then
+            f_gamma(i) = topo%der_f(1,i)
+            f_alpha(i) = topo%der_f(2,i)
+            signalp(i) = topo%der_f(3,i)
+         endif
          x(i) = topo%chieeq(i) + param%cnf(at(i))*sqrt(cn(i))
       enddo
 
@@ -1357,23 +1369,32 @@ contains
 
 !     call prmat(6,A,m,m,'A eg')
       allocate(ipiv(m))
-
+      if (need_derivatives) then
+            allocate(Rev(m,m), ipiv2(m))
+            Rev=A
+            call mctc_sytrf(env, Rev, ipiv2)
+            call mctc_sytri(env, Rev, ipiv2)
+            do i=1,m
+               do j=1,i-1
+                  Rev(i,j)=Rev(j,i)
+               enddo
+            enddo
+            deallocate(ipiv2)
+      endif
       if(single) then
          allocate(A4(m,m),x4(m))
          A4=A
          x4=x
-         deallocate(A,x)
          call mctc_sytrf(env, a4, ipiv)
          call mctc_sytrs(env, a4, x4, ipiv)
          q(1:n)=x4(1:n)
-         deallocate(A4,x4)
+         deallocate(A4,x4,A)
       else
          call mctc_sytrf(env, a, ipiv)
          call mctc_sytrs(env, a, x, ipiv)
          q(1:n)=x(1:n)
-         deallocate(A,x)
+         deallocate(A)
       endif
-
       call env%check(exitRun)
       if(exitRun) then
          call env%error('Solving linear equations failed', source)
@@ -1395,6 +1416,188 @@ contains
      &        + q(i)*q(i)*0.5d0*(topo%gameeq(i)+tsqrt2pi/sqrt(topo%alpeeq(i)))
       enddo
 
+      if (need_derivatives) then !it's O(n^3)
+      ! partial by chi, gam, cnf
+      
+      !dq/dchi, dq/dgam, dq/dcnf
+      allocate (A_chi(n,n),A_gam(n,n),A_cnf(n,n),A_alp(n,n))
+      allocate(dqdchi(86,n),dqdgam(86,n),dqdcnf(86,n),dqdalp(86,n), source = 0.0d0)
+      do i=1,n
+            do j=1,n 
+                  feqj = -tsqrt2pi*f_alpha(j)*signalp(j)/topo%alpeeq(j)+f_gamma(j) !f_eq (for d(a_jj)/dchi)
+                  feqj_cut = -tsqrt2pi*signalp(j)/topo%alpeeq(j)                   !f_eq (for d(a_jj)/dalp)
+
+                  dqdchi(at(j), i) = dqdchi(at(j), i) - Rev(i,j)        ! first term
+                  dqdgam(at(j), i) = dqdgam(at(j), i) - Rev(i,j)*q(j)
+                  dqdcnf(at(j), i) = dqdcnf(at(j), i) + Rev(i,j)*sqrt(cn(j))
+                  dqdalp(at(j), i) = dqdalp(at(j), i) - Rev(i,j)*feqj_cut*q(j)
+
+                  do k=1, 86
+                        ! atk = at(k)
+                        atk = k
+                        dqdchi(atk, i) = dqdchi(atk, i) - Rev(i,j)*feqj*q(j)*topo%dqadchi(atk,j)        ! second term
+                        dqdgam(atk, i) = dqdgam(atk, i) - Rev(i,j)*feqj*q(j)*topo%dqadgam(atk,j)
+                        dqdcnf(atk, i) = dqdcnf(atk, i) - Rev(i,j)*feqj*q(j)*topo%dqadcnf(atk,j)
+
+                        dqdalp(atk, i) = dqdalp(atk, i) - Rev(i,j)*feqj*q(j)*topo%dqadalp(atk,j)
+                  enddo
+            enddo
+            do k=1,86
+                  j = i ! So that the designations coincide with those in the description in notion
+                  A_chi(j,k) = 0.0d0 ! I hope it will clean well
+                  A_gam(j,k) = 0.0d0
+                  A_chi(j,k) = 0.0d0
+                  A_alp(j,k) = 0.0d0
+                  do m=1,j-1 !A matrixes
+                        jm = j*(j-1)/2 + m
+                        gammij=1./sqrt(topo%alpeeq(j)+topo%alpeeq(m))
+                        tmp = (gammij*r(jm))**2
+                        fneqjm = -2.0d0*exp(-tmp)*tsqrt1pi*(gammij**3)  ! f_(not equal)   (non-derivative for d(a_ij)/dparam)
+                        
+                        dumj = sqrt(topo%alpeeq(j))*f_alpha(j)*signalp(j)
+                        dumm = sqrt(topo%alpeeq(m))*f_alpha(m)*signalp(m)
+
+                        fdiffjmk = dumj*topo%dqadchi(k,j) + dumm*topo%dqadchi(k,m) ! f_diff   (derivative part for d(a_jm)/dchi)
+                        A_chi(j,k)   = A_chi(j,k)   + q(m)*fneqjm*fdiffjmk ! temporary matrix - chi
+                        A_chi(m,k)   = A_chi(m,k)   + q(j)*fneqjm*fdiffjmk
+                        ! A_chi(j,n+k) = A_chi(j,n+k) +      fneqjm*fdiffjmk ! without q for energy derivative
+                        ! A_chi(m,n+k) = A_chi(m,n+k) +      fneqjm*fdiffjmk
+                        
+                        fdiffjmk = dumj*topo%dqadgam(k,j) + dumm*topo%dqadgam(k,m) ! f_diff   (derivative part for d(a_jm)/dgam)
+                        A_gam(j,k)   = A_gam(j,k)   + q(m)*fneqjm*fdiffjmk ! temporary matrix - gam
+                        A_gam(m,k)   = A_gam(m,k)   + q(j)*fneqjm*fdiffjmk
+                        ! A_gam(j,n+k) = A_gam(j,n+k) +      fneqjm*fdiffjmk ! without q for energy derivative
+                        ! A_gam(m,n+k) = A_gam(m,n+k) +      fneqjm*fdiffjmk
+                        
+                        fdiffjmk = dumj*topo%dqadcnf(k,j) + dumm*topo%dqadcnf(k,m) ! f_diff   (derivative part for d(a_jm)/dcnf)
+                        A_cnf(j,k)   = A_cnf(j,k)   + q(m)*fneqjm*fdiffjmk ! temporary matrix - cnf
+                        A_cnf(m,k)   = A_cnf(m,k)   + q(j)*fneqjm*fdiffjmk
+                        ! A_cnf(j,n+k) = A_cnf(j,n+k) +      fneqjm*fdiffjmk ! without q for energy derivative
+                        ! A_cnf(m,n+k) = A_cnf(m,n+k) +      fneqjm*fdiffjmk
+
+
+                        fdiffjmk = dumj*topo%dqadalp(k,j) + dumm*topo%dqadalp(k,m) ! f_diff   (derivative part for d(a_jm)/dalp)
+                        dumj = 0.0d0
+                        dumm = 0.0d0
+                        if (at(j).eq.k) dumj = sqrt(topo%alpeeq(j))*signalp(j)
+                        if (at(m).eq.k) dumm = sqrt(topo%alpeeq(m))*signalp(m)
+
+                        fdiffjmk = fdiffjmk + dumj + dumm
+                        A_alp(j,k)   = A_alp(j,k)   + q(m)*fneqjm*fdiffjmk ! temporary matrix - alp
+                        A_alp(m,k)   = A_alp(m,k)   + q(j)*fneqjm*fdiffjmk
+                        ! A_alp(j,n+k) = A_alp(j,n+k) +      fneqjm*fdiffjmk ! without q for energy derivative
+                        ! A_alp(m,n+k) = A_alp(m,n+k) +      fneqjm*fdiffjmk
+                  enddo
+            enddo
+      enddo
+      do i=1,n
+            do j=1,n
+                  do k=1,86
+                        ! atk = at(k)
+                        atk = k
+                        dqdchi(atk, i) = dqdchi(atk, i) - Rev(i,j)*A_chi(j,k) ! third term for chi
+                        dqdgam(atk, i) = dqdgam(atk, i) - Rev(i,j)*A_gam(j,k) ! third term for gam
+                        dqdcnf(atk, i) = dqdcnf(atk, i) - Rev(i,j)*A_cnf(j,k) ! third term for cnf
+                        dqdalp(atk, i) = dqdalp(atk, i) - Rev(i,j)*A_alp(j,k) ! third term for alp
+                  enddo
+            enddo
+      enddo
+      do k=1,86
+            do i=1,n
+                  feqi = -tsqrt2pi*f_alpha(i)*signalp(i)/topo%alpeeq(i)+f_gamma(i) !f_eq (for d(a_ii)/dchi)
+                  do j=1,i-1 !first term
+                        ij = (i*(i-1)/2)+j
+                        gammij=1./sqrt(topo%alpeeq(i)+topo%alpeeq(j))
+                        tmp = (gammij*r(ij))**2
+                        fneqij = -exp(-tmp)*tsqrt1pi*2.0d0*(gammij**3)
+
+                        tmp=eeqtmp(2,ij)/r(ij) ! = A(i,j)
+
+                        dumi = sqrt(topo%alpeeq(i))*f_alpha(i)
+                        dumj = sqrt(topo%alpeeq(j))*f_alpha(j)
+
+                         ! dE/dchi
+
+                        fdiffijk = dumi*topo%dqadchi(k,i) + dumj*topo%dqadchi(k,j)
+                        dumm = fneqij*fdiffijk ! = dA(i,j)/dchi
+                        
+                        der_res%d_chi(k) = der_res%d_chi(k) + dqdchi(k, i)*q(j)*tmp
+                        der_res%d_chi(k) = der_res%d_chi(k) + q(i)*dqdchi(k, j)*tmp
+                        der_res%d_chi(k) = der_res%d_chi(k) + q(i)*q(j)*dumm
+
+                         ! dE/dgam
+                        
+                        fdiffijk = dumi*topo%dqadgam(k,i) + dumj*topo%dqadgam(k,j)
+                        dumm = fneqij*fdiffijk ! = dA(i,j)/dgam
+                        
+                        der_res%d_gam(k) = der_res%d_gam(k) + dqdgam(k, i)*q(j)*tmp
+                        der_res%d_gam(k) = der_res%d_gam(k) + q(i)*dqdgam(k, j)*tmp
+                        der_res%d_gam(k) = der_res%d_gam(k) + q(i)*q(j)*dumm
+                        
+                         ! dE/dcnf
+                        
+                        fdiffijk = dumi*topo%dqadcnf(k,i) + dumj*topo%dqadcnf(k,j)
+                        dumm = fneqij*fdiffijk ! = dA(i,j)/dcnf
+                        
+                        der_res%d_cnf(k) = der_res%d_cnf(k) + dqdcnf(k, i)*q(j)*tmp
+                        der_res%d_cnf(k) = der_res%d_cnf(k) + q(i)*dqdcnf(k, j)*tmp
+                        der_res%d_cnf(k) = der_res%d_cnf(k) + q(i)*q(j)*dumm
+                        
+                        ! dE/dalp
+                       
+                       fdiffijk = dumi*topo%dqadalp(k,i) + dumj*topo%dqadalp(k,j)
+                       dumm = 0.0d0
+                       if (at(i).eq.k) dumm = dumm + sqrt(topo%alpeeq(i))*signalp(i)
+                       if (at(j).eq.k) dumm = dumm + sqrt(topo%alpeeq(j))*signalp(j)
+
+                       fdiffijk = fdiffijk + dumm
+
+                       dumm = fneqij*fdiffijk ! = dA(i,j)/dalp
+                       
+                       der_res%d_alp(k) = der_res%d_alp(k) + dqdalp(k, i)*q(j)*tmp
+                       der_res%d_alp(k) = der_res%d_alp(k) + q(i)*dqdalp(k, j)*tmp
+                       der_res%d_alp(k) = der_res%d_alp(k) + q(i)*q(j)*dumm
+                  enddo
+                  
+                  aii  = tsqrt2pi/sqrt(topo%alpeeq(i))+topo%gameeq(i) ! = A(i,i)
+                  feqi = -tsqrt2pi*f_alpha(i)*signalp(i)/topo%alpeeq(i)+f_gamma(i)
+                  feqj_cut = -tsqrt2pi*signalp(i)/topo%alpeeq(i)                   !f_eq (for d(a_ii)/dalp)
+                  x(i) = topo%chieeq(i) + param%cnf(at(i))*sqrt(cn(i))
+
+                  !second term for chi
+                  daii = feqi*topo%dqadchi(k, i)                       ! = dA(i,i)/dchi
+                  dumi = q(i)*dqdchi(k, i)*aii + 0.5d0*q(i)**2*daii
+                  dumj = dqdchi(k, i)*x(i)
+                  if (at(i).eq.k) dumj = dumj - q(i)
+                  der_res%d_chi(k) = der_res%d_chi(k) + dumi - dumj
+                  
+                  !second term for gam
+                  daii = feqi*topo%dqadgam(k, i)
+                  if (at(i).eq.k) daii = daii + 1                      ! = dA(i,i)/dgam
+                  dumi = q(i)*dqdgam(k, i)*aii + 0.5d0*q(i)**2*daii
+                  dumj = dqdgam(k, i)*x(i)
+                  der_res%d_gam(k) = der_res%d_gam(k) + dumi - dumj
+                  
+                  !second term for cnf
+                  daii = feqi*topo%dqadcnf(k, i)                       ! = dA(i,i)/dcnf
+                  dumi = q(i)*dqdcnf(k, i)*aii + 0.5d0*q(i)**2*daii
+                  dumj = dqdcnf(k, i)*x(i)
+                  if (at(i).eq.k) dumj = dumj + q(i)*sqrt(cn(i))
+                  der_res%d_cnf(k) = der_res%d_cnf(k) + dumi - dumj
+
+                  !second term for alp
+                  daii = feqi*topo%dqadalp(k, i)                       ! = dA(i,i)/dalp
+                  if (at(i).eq.k) daii = daii + feqj_cut
+                  dumi = q(i)*dqdalp(k, i)*aii + 0.5d0*q(i)**2*daii
+                  dumj = dqdalp(k, i)*x(i)
+                  der_res%d_alp(k) = der_res%d_alp(k) + dumi - dumj
+            enddo
+      enddo
+      ! call open_file(debugfile,'debug.txt','w') 
+      ! write(debugfile,'(9x,"::",21x,a,21x,"::")') "e der done"
+      ! call close_file(debugfile)
+      deallocate(A_chi,A_cnf,A_gam,A_alp,Rev,x,f_alpha,f_gamma,dqdchi,dqdgam,dqdalp,dqdcnf)
+      endif
       !work = x
       !call dsymv('u', n, 0.5d0, A, m, q, 1, -1.0_wp, work, 1)
       !es = ddot(n, q, 1, work, 1)
