@@ -97,7 +97,7 @@ contains
       integer lin
       logical ex, require_update
       integer nhb1, nhb2, nxb
-      real*8  r2,rab,qq0,erff,dd,dum1,r3(3),t8,dum,t22,t39,der_dum_i,der_dum_j,der_dum_k
+      real*8  r2,rab,qq0,erff,dd,dum1,r3(3),t8,dum,t22,t39,der_dum
       real*8  dx,dy,dz,yy,t4,t5,t6,alpha,t20
       real*8  repab,t16,t19,t26,t27,xa,ya,za,cosa,de,t28
       real*8  gammij,eesinf,etmp,phi,valijklff
@@ -109,6 +109,7 @@ contains
       real*8, allocatable :: hb_cn(:), hb_dcn(:,:,:)
       real*8, allocatable :: sqrab(:), srab(:)
       real*8, allocatable :: g5tmp(:,:)
+      real*8, allocatable :: derivative_dum(:),derivative_dum2(:)
       integer,allocatable :: d3list(:,:)
       type(tb_timer) :: timer
       real(wp) :: dispthr, cnthr, repthr, hbthr1, hbthr2
@@ -210,8 +211,9 @@ contains
 !!!!!!!!!!!!!
 
       if (pr) call timer%measure(2,'non bonded repulsion')
-      !$omp parallel do default(none) reduction(+:erep, g) &
-      !$omp shared(n, at, xyz, srab, sqrab, repthr, topo, param, der_res) &
+      allocate(derivative_dum(86), source = 0.0d0)
+      !$omp parallel do default(none) reduction(+:erep, g, derivative_dum) &
+      !$omp shared(n, at, xyz, srab, sqrab, repthr, topo, param) &
       !$omp private(iat, jat, m, ij, ati, atj, rab, r2, r3, t8, t16, t19, t26, t27)
       do iat=1,n
          m=iat*(iat-1)/2
@@ -228,8 +230,8 @@ contains
          t8 =t16*topo%alphanb(ij)
          t26=exp(-t8)*param%repz(ati)*param%repz(atj)*param%repscaln
          erep=erep+t26/rab !energy
-         der_res%d_repan(ati) = der_res%d_repan(ati) - t8*t26/(2.0d0*rab*param%repan(ati))
-         der_res%d_repan(atj) = der_res%d_repan(atj) - t8*t26/(2.0d0*rab*param%repan(atj))
+         derivative_dum(ati) = derivative_dum(ati) - t8*t26/(2.0d0*rab*param%repan(ati))
+         derivative_dum(atj) = derivative_dum(atj) - t8*t26/(2.0d0*rab*param%repan(atj))
          t27=t26*(1.5d0*t8+1.0d0)/t19
          r3 =(xyz(:,iat)-xyz(:,jat))*t27
          g(:,iat)=g(:,iat)-r3
@@ -237,6 +239,8 @@ contains
          enddo
       enddo
       !$omp end parallel do
+      der_res%d_repan = derivative_dum
+      deallocate(derivative_dum)
       if (pr) call timer%measure(2)
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -350,10 +354,11 @@ contains
       call gfnffdrab(n,at,xyz,cn,dcn,topo%nbond,topo%blist,rab0,grab0)
       deallocate(dcn)
 
-      !$omp parallel do default(none) reduction(+:g, ebond) &
-      !$omp shared(grab0, topo, param, rab0, srab, xyz, at, hb_cn, hb_dcn, n, der_res, env) &
+      allocate(derivative_dum(86), source = 0.0d0)
+      !$omp parallel do default(none) reduction(+:g, ebond, derivative_dum) &
+      !$omp shared(grab0, topo, param, rab0, srab, xyz, at, hb_cn, hb_dcn, n, env) &
       !$omp private(i, k, iat, jat, ij, rab, rij, drij, t8, dr, dum, yy, &
-      !$omp& dx, dy, dz, t4, t5, t6, ati, atj, der_dum_i)
+      !$omp& dx, dy, dz, t4, t5, t6, ati, atj, der_dum)
       do i=1,topo%nbond
          iat=topo%blist(1,i)
          jat=topo%blist(2,i)
@@ -363,15 +368,18 @@ contains
          rab=srab(ij)
          rij=rab0(i)
          drij=grab0(:,:,i)
+         der_dum = 0.0d0
          if (topo%nr_hb(i).ge.1) then
-            call egbond_hb(i,iat,jat,rab,rij,drij,hb_cn,hb_dcn,n,at,xyz,ebond,der_dum_i,g,param,topo)
+            call egbond_hb(i,iat,jat,rab,rij,drij,hb_cn,hb_dcn,n,at,xyz,ebond,der_dum,g,param,topo)
          else
-            call egbond(i,iat,jat,rab,rij,drij,n,at,xyz,ebond,der_dum_i,g,topo)
+            call egbond(i,iat,jat,rab,rij,drij,n,at,xyz,ebond,der_dum,g,topo)
          end if
-         der_res%d_bond(ati) = der_res%d_bond(ati) + der_dum_i * param%bond(atj)
-         der_res%d_bond(atj) = der_res%d_bond(atj) + der_dum_i * param%bond(ati)
+         derivative_dum(ati) = derivative_dum(ati) + der_dum * param%bond(atj)
+         derivative_dum(atj) = derivative_dum(atj) + der_dum * param%bond(ati)
       enddo
       !$omp end parallel do
+      der_res%d_bond = derivative_dum
+      deallocate(derivative_dum)
 
       deallocate(hb_dcn)
 
@@ -379,8 +387,9 @@ contains
 ! bonded REP
 !!!!!!!!!!!!!!!!!!
 
-      !$omp parallel do default(none) reduction(+:erep, g) &
-      !$omp shared(topo, param, at, sqrab, srab, xyz, der_res) &
+      allocate(derivative_dum(86), source = 0.0d0)
+      !$omp parallel do default(none) reduction(+:erep, g, derivative_dum) &
+      !$omp shared(topo, param, at, sqrab, srab, xyz) &
       !$omp private(i, iat, jat, ij, xa, ya, za, dx, dy, dz, r2, rab, ati, atj, &
       !$omp& alpha, repab, t16, t19, t26, t27)
       do i=1,topo%nbond
@@ -403,10 +412,10 @@ contains
          t19=t16*t16
          t26=exp(-alpha*t16)*repab
          if (ati.eq.atj) then
-            der_res%d_repa(ati) = der_res%d_repa(ati) - (t16*t26/rab)
+            derivative_dum(ati) = derivative_dum(ati) - (t16*t26/rab)
          else
-            der_res%d_repa(ati) = der_res%d_repa(ati) - alpha*t16*t26/(2.0d0*rab*param%repa(ati))
-            der_res%d_repa(atj) = der_res%d_repa(atj) - alpha*t16*t26/(2.0d0*rab*param%repa(atj))
+            derivative_dum(ati) = derivative_dum(ati) - alpha*t16*t26/(2.0d0*rab*param%repa(ati))
+            derivative_dum(atj) = derivative_dum(atj) - alpha*t16*t26/(2.0d0*rab*param%repa(atj))
          endif
          erep=erep+t26/rab !energy
          t27=t26*(1.5d0*alpha*t16+1.0d0)/t19
@@ -418,6 +427,8 @@ contains
          g(3,jat)=g(3,jat)+dz*t27
       enddo
       !$omp end parallel do
+      der_res%d_repa = derivative_dum
+      deallocate(derivative_dum)
       endif
       if (pr) call timer%measure(7)
 
@@ -427,24 +438,28 @@ contains
 
       if (pr) call timer%measure(8,'bend and torsion')
       if(topo%nangl.gt.0)then
-         !$omp parallel do default(none) reduction (+:eangl, g) &
-         !$omp shared(n, at, xyz, topo, param, der_res) &
-         !$omp private(m, j, i, k, etmp, g3tmp, der_dum_i, der_dum_j, der_dum_k)
+         allocate(derivative_dum(86),derivative_dum2(86), source = 0.0d0)
+         !$omp parallel do default(none) reduction (+:eangl, g, derivative_dum, derivative_dum2) &
+         !$omp shared(n, at, xyz, topo, param) &
+         !$omp private(m, j, i, k, etmp, g3tmp, der_dum)
          do m=1,topo%nangl
             j = topo%alist(1,m)
             i = topo%alist(2,m)
             k = topo%alist(3,m)
-            call egbend(m,j,i,k,n,at,xyz,etmp,der_dum_i,der_dum_j,der_dum_k,g3tmp,param,topo)
+            der_dum = 0.0d0
+            call egbend(m,j,i,k,n,at,xyz,etmp,der_dum,g3tmp,param,topo)
             g(1:3,j)=g(1:3,j)+g3tmp(1:3,1)
             g(1:3,i)=g(1:3,i)+g3tmp(1:3,2)
             g(1:3,k)=g(1:3,k)+g3tmp(1:3,3)
             eangl=eangl+etmp
-            der_res%d_angl(at(j)) = der_res%d_angl(at(j)) + der_dum_j
-            der_res%d_angl2(at(i)) = der_res%d_angl2(at(i)) + der_dum_i
-            ! if(at(i).ne.at(k)) der_res%d_angl2(at(k)) = der_res%d_angl2(at(k)) + der_dum_k
-            der_res%d_angl2(at(k)) = der_res%d_angl2(at(k)) + der_dum_k
+            derivative_dum2(at(i)) = derivative_dum2(at(i)) + der_dum * param%angl(at(j))  * param%angl2(at(k))
+            derivative_dum(at(j))  = derivative_dum(at(j))  + der_dum * param%angl2(at(i)) * param%angl2(at(k))
+            derivative_dum2(at(k)) = derivative_dum2(at(k)) + der_dum * param%angl2(at(i)) * param%angl(at(j))
          enddo
          !$omp end parallel do
+         der_res%d_angl  = derivative_dum
+         der_res%d_angl2 = derivative_dum2
+         deallocate(derivative_dum,derivative_dum2)
       endif
 
 !!!!!!!!!!!!!!!!!!
@@ -452,26 +467,31 @@ contains
 !!!!!!!!!!!!!!!!!!
 
       if(topo%ntors.gt.0)then
-         !$omp parallel do default(none) reduction(+:etors, g) &
-         !$omp shared(param, topo, n, at, xyz, der_res) &
-         !$omp private(m, i, j, k, l, etmp, g4tmp, der_dum_i)
+      allocate(derivative_dum(86),derivative_dum2(86), source = 0.0d0)
+         !$omp parallel do default(none) reduction(+:etors, g, derivative_dum, derivative_dum2) &
+         !$omp shared(param, topo, n, at, xyz) &
+         !$omp private(m, i, j, k, l, etmp, g4tmp, der_dum)
          do m=1,topo%ntors
             i=topo%tlist(1,m)
             j=topo%tlist(2,m)
             k=topo%tlist(3,m)
             l=topo%tlist(4,m)
-            call egtors(m,i,j,k,l,n,at,xyz,etmp,der_dum_i,g4tmp,param,topo)
+            der_dum = 0.0d0
+            call egtors(m,i,j,k,l,n,at,xyz,etmp,der_dum,g4tmp,param,topo)
             g(1:3,i)=g(1:3,i)+g4tmp(1:3,1)
             g(1:3,j)=g(1:3,j)+g4tmp(1:3,2)
             g(1:3,k)=g(1:3,k)+g4tmp(1:3,3)
             g(1:3,l)=g(1:3,l)+g4tmp(1:3,4)
-            der_res%d_tors2(at(i)) = der_res%d_tors2(at(i)) + der_dum_i* param%tors (at(j))*param%tors (at(k))*param%tors2(at(l))
-            der_res%d_tors (at(j)) = der_res%d_tors (at(j)) + der_dum_i* param%tors2(at(i))*param%tors (at(k))*param%tors2(at(l))
-            der_res%d_tors (at(k)) = der_res%d_tors (at(k)) + der_dum_i* param%tors2(at(i))*param%tors (at(j))*param%tors2(at(l))
-            der_res%d_tors2(at(l)) = der_res%d_tors2(at(l)) + der_dum_i* param%tors2(at(i))*param%tors (at(j))*param%tors (at(k))
+            derivative_dum2(at(i)) = derivative_dum2(at(i)) + der_dum* param%tors (at(j))*param%tors (at(k))*param%tors2(at(l))
+            derivative_dum (at(j)) = derivative_dum (at(j)) + der_dum* param%tors2(at(i))*param%tors (at(k))*param%tors2(at(l))
+            derivative_dum (at(k)) = derivative_dum (at(k)) + der_dum* param%tors2(at(i))*param%tors (at(j))*param%tors2(at(l))
+            derivative_dum2(at(l)) = derivative_dum2(at(l)) + der_dum* param%tors2(at(i))*param%tors (at(j))*param%tors (at(k))
             etors=etors+etmp
          enddo
          !$omp end parallel do
+         der_res%d_tors  = derivative_dum
+         der_res%d_tors2 = derivative_dum2
+         deallocate(derivative_dum,derivative_dum2)
       endif
       if (pr) call timer%measure(8)
 
@@ -670,7 +690,7 @@ contains
       real*8,intent(in)    :: drij(3,n)
       real*8,intent(in)    :: xyz(3,n)
       real*8,intent(inout) :: e
-      real*8,intent(out) :: der
+      real*8,intent(out)   :: der
       real*8,intent(inout) :: g(3,n)
       !Stack
       integer j,k
@@ -681,7 +701,7 @@ contains
 
          t8 =topo%vbond(2,i)
          dr =rab-rij
-         dum=topo%vbond(3,i)*exp(-t8*dr**2)
+         dum = topo%vbond(3,i)*exp(-t8*dr**2)
          der = topo%vbond(4,i)*exp(-t8*dr**2)
          e=e+dum                      ! bond energy
          yy=2.0d0*t8*dr*dum
@@ -725,7 +745,7 @@ contains
       real*8,intent(in)    :: hb_cn(n)
       real*8,intent(in)    :: hb_dcn(3,n,n)
       real*8,intent(inout) :: e
-      real*8,intent(out) :: der
+      real*8,intent(out)   :: der
       real*8,intent(inout) :: g(3,n)
       !Stack
       integer j,k
@@ -843,7 +863,7 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-      subroutine egbend(m,j,i,k,n,at,xyz,e,der_i,der_j,der_k,g,param,topo)
+      subroutine egbend(m,j,i,k,n,at,xyz,e,der,g,param,topo)
       use xtb_mctc_constants
       implicit none
       type(TGFFData), intent(in) :: param
@@ -851,7 +871,7 @@ contains
       integer m,n,at(n)
       integer i,j,k
       real*8 xyz(3,n),g(3,3),e
-      real*8 der_i, der_j, der_k
+      real*8 der
 
       real*8  c0,kijk,va(3),vb(3),vc(3),cosa
       real*8  dt,ea,dedb(3),dedc(3),rmul2,rmul1,deddt
@@ -882,21 +902,14 @@ contains
          call gfnffdampa(at(k),at(j),rcb2,dampjk,damp2jk,param)
          damp=dampij*dampjk
 
-         der_i = topo%vangl(3, m) * param%angl(at(j)) * param%angl2(at(k))
-         der_j = topo%vangl(3, m) * param%angl2(at(i))* param%angl2(at(k))
-         der_k = topo%vangl(3, m) * param%angl(at(j)) * param%angl2(at(i))
          if(pi-c0.lt.1.d-6)then ! linear
          dt  = theta - c0
          ea  = kijk * dt**2
-         der_i = der_i * dt**2 * damp
-         der_j = der_j * dt**2 * damp
-         der_k = der_k * dt**2 * damp
+         der = topo%vangl(3, m) * dt**2 * damp
          deddt = 2.d0 * kijk * dt
          else
          ea=kijk*(cosa-cos(c0))**2
-         der_i = der_i * (cosa-cos(c0))**2 * damp
-         der_j = der_j * (cosa-cos(c0))**2 * damp
-         der_k = der_k * (cosa-cos(c0))**2 * damp
+         der = topo%vangl(3, m) * (cosa-cos(c0))**2 * damp
          deddt=2.0d0*kijk*sin(theta)*(cos(c0)-cosa)
          endif
 
@@ -1047,7 +1060,7 @@ contains
       type(TGFFTopology), intent(in) :: topo
       integer m,n,at(n)
       integer i,j,k,l
-      real*8 der
+      real*8, intent(out) :: der
       real*8 xyz(3,n),g(3,4),e
 
       real*8  c0,kijk,va(3),vb(3),vc(3),cosa
@@ -1502,6 +1515,7 @@ contains
                   enddo
             enddo
       enddo
+      ! cycle
       do k=1,86
             do i=1,n
                   feqi = -tsqrt2pi*f_alpha(i)*signalp(i)/topo%alpeeq(i)+f_gamma(i) !f_eq (for d(a_ii)/dchi)
