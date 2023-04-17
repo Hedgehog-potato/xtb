@@ -63,7 +63,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
       end interface
 
       real(wp) r0,ff,omega,f1,f2,phi,valijklff,ringf,fcn
-      real(wp) shift,dum,dum1,dum2,dum4,qafac,fqq,feta
+      real(wp) shift,dum,dum1,dum2,dum4,qafac,fqq,feta,fqq_der
       real(wp) sumppi,fpi,fxh,fijk,fsrb2,ees
       real(wp) fheavy,fn,eold,fctot,fij
       real(wp) hbpi(2),hbpj(2),sdum3(3)
@@ -1226,8 +1226,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
 
 ! tot prefactor        atoms              spec     typ       qterm    heavy-M  pi   XH(3ring,OH...) CN for M
          topo%vbond(3,i) = -param%bond(ia)*param%bond(ja) * ringf * bstrength * fqq * fheavy * fpi * fxh * fcn
-         topo%vbond(4,i) = -param%bond(ja) * ringf * bstrength * fqq * fheavy * fpi * fxh * fcn                !derivative ia
-         topo%vbond(5,i) = -param%bond(ia) * ringf * bstrength * fqq * fheavy * fpi * fxh * fcn                !derivative ja
+         topo%vbond(4,i) = -ringf * bstrength * fqq * fheavy * fpi * fxh * fcn                !derivative
 !        write(env%unit,*) bond(ia),bond(ja),ringf,bstrength,fqq,fheavy,fpi,fxh
 
 ! output
@@ -1370,8 +1369,10 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
      &                (topo%hyb(ii).eq.1 .or. topo%hyb(kk).eq.1)
                if(imetal(ii).eq.0.and.imetal(jj).eq.0.and.imetal(kk).eq.0) then
                fqq=1.0d0-(topo%qa(ii)*topo%qa(jj)+topo%qa(ii)*topo%qa(kk))*gen%qfacBEN      ! weaken it
+               fqq_der = -1.0d0  * gen%qfacBEN 
                else
                fqq=1.0d0-(topo%qa(ii)*topo%qa(jj)+topo%qa(ii)*topo%qa(kk))*gen%qfacBEN*2.5
+               fqq_der = -2.50d0 * gen%qfacBEN 
                endif
                f2 =1.0d0
                fn =1.0d0
@@ -1565,6 +1566,7 @@ subroutine gfnff_ini(env,pr,makeneighbor,mol,gen,param,topo,accuracy)
 !                          central*neigbor charge spec. met.  small angle corr.
                topo%vangl(2,topo%nangl)= fijk * fqq * f2 * fn * fbsmall * feta
                topo%vangl(3,topo%nangl)= fqq * f2 * fn * fbsmall * feta
+               topo%vangl(4,topo%nangl)= fijk * f2 * fn * fbsmall * feta * fqq_der
 !              write(env%unit,*) param%angl(ati),param%angl2(atj),param%angl2(atk), param%angl(ati)*param%angl2(atj)*param%angl2(atk), fqq,f2,fn,fbsmall
                if(pr)write(env%unit,'(3i5,2x,3f8.3,l2,i4)') ii,jj,kk,r0,phi*180./pi,topo%vangl(2,topo%nangl),picon,rings
             enddo
