@@ -441,7 +441,8 @@ contains
             eangl=eangl+etmp
             der_res%d_angl(at(j)) = der_res%d_angl(at(j)) + der_dum_j
             der_res%d_angl2(at(i)) = der_res%d_angl2(at(i)) + der_dum_i
-            if(at(i).ne.at(k)) der_res%d_angl2(at(k)) = der_res%d_angl2(at(k)) + der_dum_k
+            ! if(at(i).ne.at(k)) der_res%d_angl2(at(k)) = der_res%d_angl2(at(k)) + der_dum_k
+            der_res%d_angl2(at(k)) = der_res%d_angl2(at(k)) + der_dum_k
          enddo
          !$omp end parallel do
       endif
@@ -885,18 +886,21 @@ contains
          call gfnffdampa(at(k),at(j),rcb2,dampjk,damp2jk,param)
          damp=dampij*dampjk
 
+         der_i = topo%vangl(3, m) * param%angl(at(j)) * param%angl2(at(k))
+         der_j = topo%vangl(3, m) * param%angl2(at(i))* param%angl2(at(k))
+         der_k = topo%vangl(3, m) * param%angl(at(j)) * param%angl2(at(i))
          if(pi-c0.lt.1.d-6)then ! linear
          dt  = theta - c0
          ea  = kijk * dt**2
-         der_i = topo%vangl(4, m) * dt**2 * damp
-         der_j = topo%vangl(3, m) * dt**2 * damp
-         der_k = topo%vangl(5, m) * dt**2 * damp
+         der_i = der_i * dt**2 * damp
+         der_j = der_j * dt**2 * damp
+         der_k = der_k * dt**2 * damp
          deddt = 2.d0 * kijk * dt
          else
          ea=kijk*(cosa-cos(c0))**2
-         der_i = topo%vangl(4, m) * (cosa-cos(c0))**2 * damp
-         der_j = topo%vangl(3, m) * (cosa-cos(c0))**2 * damp
-         der_k = topo%vangl(5, m) * (cosa-cos(c0))**2 * damp
+         der_i = der_i * (cosa-cos(c0))**2 * damp
+         der_j = der_j * (cosa-cos(c0))**2 * damp
+         der_k = der_k * (cosa-cos(c0))**2 * damp
          deddt=2.0d0*kijk*sin(theta)*(cos(c0)-cosa)
          endif
 
