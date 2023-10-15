@@ -79,6 +79,7 @@ subroutine test_gfnff_sp(error)
    type(TMolecule)     :: mol
    type(TEnvironment)  :: env
    type(scc_results)   :: res_gff
+   type(gfnff_derivative_results), allocatable   :: der_res
    type(TGFFCalculator) :: calc
    type(TGFFNeighbourList) :: nlist
    type(TBorn), allocatable :: solvation
@@ -108,7 +109,7 @@ subroutine test_gfnff_sp(error)
    gff_print=.true.
 
    call gfnff_eg(env,gff_print,mol%n,nint(mol%chrg),mol%at,mol%xyz,make_chrg, &
-      & g,etot,res_gff,calc%param,calc%topo,nlist,solvation,.true.,calc%version, &
+      & g,etot,res_gff,der_res,calc%param,calc%topo,nlist,solvation,.true.,calc%version, &
       & calc%accuracy)
 
    call check_(error, res_gff%e_total,-0.76480130317838_wp, thr=thr)
